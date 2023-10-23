@@ -16,7 +16,7 @@ _old/
 /.vscode/
 #AssetBundles folder
 AssetBundles/
-
+*.zip
 # iOS Build
 DreamAR_iOS/
 .DS_Store
