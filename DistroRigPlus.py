@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "Rig作成ツール",
+    "name": "DistroRigPlus",
     "blender": (2, 80, 0),
     "category": "Object",
 }
@@ -782,11 +782,11 @@ class IKToolSettings(bpy.types.PropertyGroup):
 
 
 class IKToolPanel(bpy.types.Panel):
-    bl_label = "IK Tools"
+    bl_label = "DistroRigPlus"
     bl_idname = "OBJECT_PT_ik_tools"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'Tools'
+    bl_category = 'DistroRigPlus'
 
     def draw(self, context):
         layout = self.layout
