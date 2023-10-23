@@ -132,7 +132,7 @@ class CreateWristIKOperator(Operator):
     bl_label = "腕IKを作成"
 
     def execute(self, context):
-        armature_obj = bpy.data.objects.get("rig")
+        armature_obj = bpy.data.objects.get("RigPlus")
         if armature_obj and armature_obj.type == 'ARMATURE':
             armature = armature_obj.data
             bpy.ops.object.mode_set(mode='EDIT')
@@ -287,7 +287,7 @@ class MakeRigOperator(bpy.types.Operator):
         if selected_obj and selected_obj.type == 'ARMATURE':
             # 選択中のアーマチュアをコピーしてrigという名前で新しいアーマチュアを作成
             bpy.ops.object.duplicate()
-            bpy.context.active_object.name = "rig"
+            bpy.context.active_object.name = "RigPlus"
             rig = bpy.context.active_object
             
             # アーマチュアのボーンをポーズモードに切り替え
@@ -320,7 +320,7 @@ class CreateLegIKOperator(bpy.types.Operator):
     bl_label = "Create Leg IK"
 
     def execute(self, context):
-        armature_obj = bpy.data.objects.get("rig")
+        armature_obj = bpy.data.objects.get("RigPlus")
         if armature_obj and armature_obj.type == 'ARMATURE':
             armature = armature_obj.data
             bpy.ops.object.mode_set(mode='POSE')
