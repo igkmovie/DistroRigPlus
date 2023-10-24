@@ -87,7 +87,7 @@ def hide_dummy_bones(active_object):
         if target_bone_name_part in bone.name:
             bone.bone.hide = True
 
-def create_custom_shape(shape_type="cube", size=0.5, color=(1, 1, 1, 1)):
+def create_custom_shape(shape_type="cube", size=0.5):
     # 新しいコレクション "WGT" を作成
     if "WGT" not in bpy.data.collections:
         wgt_collection = bpy.data.collections.new("WGT")
@@ -116,13 +116,11 @@ def create_custom_shape(shape_type="cube", size=0.5, color=(1, 1, 1, 1)):
     # カスタムシェイプをワイヤーフレーム表示にする
     custom_shape.display_type = 'WIRE'
 
-    # ワイヤーフレームの色を設定
-    custom_shape.color = color
-
     # カスタムシェイプオブジェクトを非表示に設定
     custom_shape.hide_viewport = True
 
     return custom_shape
+
 
 
 def draw_bone_constraints(context, layout):
@@ -300,8 +298,8 @@ class CreateWristIKOperator(Operator):
                         pole_bone.tail.z = pole_bone.head.z
 
             bpy.ops.object.mode_set(mode='POSE')
-            custom_shape = create_custom_shape("cube",1,(0, 0, 1, 1))
-            custom_shapePole = create_custom_shape("sphere",0.5,(0, 1, 0, 1))
+            custom_shape = create_custom_shape("cube",1)
+            custom_shapePole = create_custom_shape("sphere",0.5)
             
             for bone_name in ["L_lower_arm", "R_lower_arm","L_lower_arm_dummy","R_lower_arm_dummy"]:
                 bone = armature_obj.pose.bones.get(bone_name)
@@ -504,8 +502,8 @@ class CreateLegIKOperator(bpy.types.Operator):
 
             # Switch to pose mode and add constraints
             bpy.ops.object.mode_set(mode='POSE')
-            custom_shape = create_custom_shape("cube",0.5,(0, 0, 1, 1))
-            custom_shapePole = create_custom_shape("sphere",0.5,(0, 1, 0, 1))
+            custom_shape = create_custom_shape("cube",0.5)
+            custom_shapePole = create_custom_shape("sphere",0.5)
 
             for bone_names in leg_bones_sets:
                 middle_bone_name = bone_names[1]
