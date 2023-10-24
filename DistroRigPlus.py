@@ -124,7 +124,22 @@ def draw_leg_constraints(context, layout):
                         row = layout.row()
                         row.label(text=displayName)
                         row.prop(constraint, "influence", slider=True)
+def ik2fk(context,target, pole, upper_fk, fore_fk):
+    amt = bpy.context.object
+    set_translation(target, fore_fk.tail)
+    upper_fk_global_location = amt.matrix_world @ amt.pose.bones[upper_fk.name].tail
+    context.scene.cursor.location = upper_fk_global_location;
+    for bone in amt.data.bones:
+        bone.select = False
+    amt.pose.bones[pole.name].bone.select = True
+    bpy.ops.view3d.snap_selected_to_cursor(False)
 
+def set_translation(bone, loc):
+    mat = bone.matrix.copy()
+    mat[0][3] = loc[0]
+    mat[1][3] = loc[1]
+    mat[2][3] = loc[2]
+    bone.matrix = mat
 
 
 class CreateWristIKOperator(Operator):
@@ -187,12 +202,12 @@ class CreateWristIKOperator(Operator):
                         pole_bone.tail = ik_bone.tail  # IKボーンのtailの位置に設定
                         pole_bone.parent = None
 
-                # 2. ポールボーンの親を設定
-                if pole_bone_name in armature.edit_bones:
-                    pole_bone = armature.edit_bones[pole_bone_name]
-                    ik_bone_name = end_bone_name + "_IK"
-                    if ik_bone_name in armature.edit_bones:
-                        pole_bone.parent = armature.edit_bones[ik_bone_name]
+                # # 2. ポールボーンの親を設定
+                # if pole_bone_name in armature.edit_bones:
+                #     pole_bone = armature.edit_bones[pole_bone_name]
+                #     ik_bone_name = end_bone_name + "_IK"
+                #     if ik_bone_name in armature.edit_bones:
+                #         pole_bone.parent = armature.edit_bones[ik_bone_name]
 
                 # 3. ポールボーンの位置を設定（L_lower_legのheadの高さに設定）
                 if pole_bone_name in armature.edit_bones:
@@ -201,8 +216,8 @@ class CreateWristIKOperator(Operator):
                     if pole_bone and lower_leg_bone:
                         pole_bone.head.x = lower_leg_bone.head.x
                         pole_bone.tail.x = lower_leg_bone.head.x
-                        pole_bone.head.y = ik_bone.tail.y- 0.1
-                        pole_bone.tail.y = ik_bone.tail.y - 0.2  # -0.1を調整することで望む位置に設定
+                        pole_bone.head.y = ik_bone.tail.y+ 0.2
+                        pole_bone.tail.y = ik_bone.tail.y + 0.3  # 0.3を調整することで望む位置に設定
                         pole_bone.tail.z = pole_bone.head.z
 
             bpy.ops.object.mode_set(mode='POSE')
@@ -233,7 +248,7 @@ class CreateWristIKOperator(Operator):
                     if pole_target:
                         ik_constraint.pole_target = armature_obj
                         ik_constraint.pole_subtarget = pole_target_name
-                        ik_constraint.pole_angle = math.radians(90)
+                        ik_constraint.pole_angle = math.radians(-90)
 
                 pbone0 = armature_obj.pose.bones["L_hand_IK"]
                 pbone0.custom_shape = custom_shape
@@ -312,8 +327,6 @@ class MakeRigOperator(bpy.types.Operator):
         
         return {'FINISHED'}
     
-import bpy
-import mathutils
 
 class CreateLegIKOperator(bpy.types.Operator):
     bl_idname = "object.create_leg_ik"
@@ -388,12 +401,12 @@ class CreateLegIKOperator(bpy.types.Operator):
                         pole_bone.tail = ik_bone.tail  # IKボーンのtailの位置に設定
                         pole_bone.parent = None
 
-                # 2. ポールボーンの親を設定
-                if pole_bone_name in armature.edit_bones:
-                    pole_bone = armature.edit_bones[pole_bone_name]
-                    ik_bone_name = end_bone_name + "_IK"
-                    if ik_bone_name in armature.edit_bones:
-                        pole_bone.parent = armature.edit_bones[ik_bone_name]
+                # # 2. ポールボーンの親を設定
+                # if pole_bone_name in armature.edit_bones:
+                #     pole_bone = armature.edit_bones[pole_bone_name]
+                #     ik_bone_name = end_bone_name + "_IK"
+                #     if ik_bone_name in armature.edit_bones:
+                #         pole_bone.parent = armature.edit_bones[ik_bone_name]
 
                 # 3. ポールボーンの位置を設定（L_lower_legのheadの高さに設定）
                 if pole_bone_name in armature.edit_bones:
@@ -499,7 +512,7 @@ class IK2FKRightOperator(bpy.types.Operator):
         upper_Ik_r = pose_bones.get('R_upper_arm_dummy')
 
         if upper_fk_r and fore_fk_r and target_r and pole_r:
-            ik2fk_Hand(context, target_r, pole_r, upper_fk_r, fore_fk_r,upper_Ik_r)
+            ik2fk(context, target_r, pole_r, upper_fk_r, fore_fk_r)
             return {'FINISHED'}
         else:
             self.report({'ERROR'}, "右腕のボーンが見つかりません")
@@ -534,13 +547,13 @@ def ik2fk_Hand(context,target, pole, upper_fk, fore_fk,upper_Ik):
         bone.select = False
     amt.pose.bones[pole.name].bone.select = True
     bpy.ops.view3d.snap_selected_to_cursor(False)
-    upper_Ik_l_global_location = amt.matrix_world @ amt.pose.bones[upper_Ik.name].tail
-    context.scene.cursor.location = upper_Ik_l_global_location
-    for bone in amt.data.bones:
-        bone.select = False
-    amt.pose.bones[pole.name].bone.select = True
-    bpy.ops.view3d.snap_selected_to_cursor(False)
-    pole.location.z = pole.location.z+0.01
+    # upper_Ik_l_global_location = amt.matrix_world @ amt.pose.bones[upper_Ik.name].tail
+    # context.scene.cursor.location = upper_Ik_l_global_location
+    # for bone in amt.data.bones:
+    #     bone.select = False
+    # amt.pose.bones[pole.name].bone.select = True
+    # bpy.ops.view3d.snap_selected_to_cursor(False)
+    # pole.location.z = pole.location.z+0.01
 
 # 右腕のIKからFKへの情報のコピーを行うオペレーター
 class CopyIKtoFKRightOperator(bpy.types.Operator):
@@ -750,22 +763,7 @@ class IK2FKLeftLegOperator(bpy.types.Operator):
             self.report({'ERROR'}, "左足のボーンが見つかりません")
             return {'CANCELLED'}
         
-def ik2fk(context,target, pole, upper_fk, fore_fk):
-    amt = bpy.context.object
-    set_translation(target, fore_fk.tail)
-    upper_fk_global_location = amt.matrix_world @ amt.pose.bones[upper_fk.name].tail
-    context.scene.cursor.location = upper_fk_global_location;
-    for bone in amt.data.bones:
-        bone.select = False
-    amt.pose.bones[pole.name].bone.select = True
-    bpy.ops.view3d.snap_selected_to_cursor(False)
 
-def set_translation(bone, loc):
-    mat = bone.matrix.copy()
-    mat[0][3] = loc[0]
-    mat[1][3] = loc[1]
-    mat[2][3] = loc[2]
-    bone.matrix = mat
 
 # 1. Define a custom property group
 class IKToolSettings(bpy.types.PropertyGroup):
