@@ -244,7 +244,7 @@ class CreateWristIKOperator(Operator):
                         new_bone = armature.edit_bones.new(ik_bone_name)
                         new_bone.head = hand_bone.head
                         new_bone.tail = new_bone.head + mathutils.Vector((0, 0, -0.1))
-                        new_bone.parent = None
+                        new_bone.parent = armature.edit_bones["Root"]
 
             for bone_names in arm_bones_sets:
                 hand_bone_name, lower_arm_name, upper_arm_name, shoulder_name = bone_names
@@ -282,12 +282,11 @@ class CreateWristIKOperator(Operator):
                         pole_bone.tail = ik_bone.tail  # IKボーンのtailの位置に設定
                         pole_bone.parent = None
 
-                # # 2. ポールボーンの親を設定
-                # if pole_bone_name in armature.edit_bones:
-                #     pole_bone = armature.edit_bones[pole_bone_name]
-                #     ik_bone_name = end_bone_name + "_IK"
-                #     if ik_bone_name in armature.edit_bones:
-                #         pole_bone.parent = armature.edit_bones[ik_bone_name]
+                # 2. ポールボーンの親を設定
+                if pole_bone_name in armature.edit_bones:
+                    pole_bone = armature.edit_bones[pole_bone_name]
+                    if ik_bone_name in armature.edit_bones:
+                        pole_bone.parent = armature.edit_bones["Root"]
 
                 # 3. ポールボーンの位置を設定（L_lower_legのheadの高さに設定）
                 if pole_bone_name in armature.edit_bones:
@@ -448,7 +447,7 @@ class CreateLegIKOperator(bpy.types.Operator):
                         new_bone = armature.edit_bones.new(ik_bone_name)
                         new_bone.head = end_bone.head
                         new_bone.tail = new_bone.head + mathutils.Vector((0, 0, -0.1))
-                        new_bone.parent = None
+                        new_bone.parent = armature.edit_bones["Root"]
 
             # Create dummy bones for the legs
             for bone_names in leg_bones_sets:
@@ -487,12 +486,11 @@ class CreateLegIKOperator(bpy.types.Operator):
                         pole_bone.tail = ik_bone.tail  # IKボーンのtailの位置に設定
                         pole_bone.parent = None
 
-                # # 2. ポールボーンの親を設定
-                # if pole_bone_name in armature.edit_bones:
-                #     pole_bone = armature.edit_bones[pole_bone_name]
-                #     ik_bone_name = end_bone_name + "_IK"
-                #     if ik_bone_name in armature.edit_bones:
-                #         pole_bone.parent = armature.edit_bones[ik_bone_name]
+                # 2. ポールボーンの親を設定
+                if pole_bone_name in armature.edit_bones:
+                    pole_bone = armature.edit_bones[pole_bone_name]
+                    if ik_bone_name in armature.edit_bones:
+                        pole_bone.parent = armature.edit_bones["Root"]
 
                 # 3. ポールボーンの位置を設定（L_lower_legのheadの高さに設定）
                 if pole_bone_name in armature.edit_bones:
