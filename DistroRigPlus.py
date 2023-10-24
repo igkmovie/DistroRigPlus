@@ -8,6 +8,65 @@ import bpy
 from bpy.types import Operator, Panel
 import mathutils
 import math 
+from enum import Enum
+
+def create_colored_bone_groups(active_obj):
+    """
+    active_obj: 対象のArmatureオブジェクト
+    この関数は、指定の名前と色でボーングループを作成します。
+    """
+    if active_obj.type != 'ARMATURE':
+        print("The provided object is not an armature.")
+        return
+
+    # Edit modeに切り替え
+    bpy.context.view_layer.objects.active = active_obj
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    bone_group_data = {
+        'IK_handle': (0.0, 0.0, 1.0),  # 青色
+        'Pole_handle': (1.0, 1.0, 0.0),  # 黄色
+        'body_handle': (1.0, 0.5, 0.0),  # オレンジ色
+        'center_handle': (0.5, 0.0, 0.5)  # 紫色
+    }
+
+    for name, color in bone_group_data.items():
+        if name not in active_obj.pose.bone_groups:
+            bg = active_obj.pose.bone_groups.new(name=name)
+            bg.color_set = 'CUSTOM'
+            bg.colors.normal = color
+    bpy.ops.object.mode_set(mode='OBJECT')
+            
+def assign_bone_to_group(bone_name, bone_group_enum):
+    # 'RigPlus'という名前のアーマチュアを取得
+    armature = bpy.data.objects.get("RigPlus")
+    
+    if not armature or armature.type != 'ARMATURE':
+        print("'RigPlus'という名前のアーマチュアが見つかりません。")
+        return
+
+    # アーマチュアをアクティブに設定
+    bpy.context.view_layer.objects.active = armature
+    armature.select_set(True)
+
+    # ポーズモードに切り替える
+    bpy.ops.object.mode_set(mode='POSE')
+    
+    # ボーングループの存在を確認
+    if bone_group_enum.value not in armature.pose.bone_groups:
+        print(f"{bone_group_enum.value} という名前のボーングループは存在しません。")
+        return
+
+    group = armature.pose.bone_groups[bone_group_enum.value]
+
+    # ボーンの存在を確認して、ボーングループに追加
+    if bone_name in armature.pose.bones:
+        armature.pose.bones[bone_name].bone_group = group
+    else:
+        print(f"{bone_name} という名前のボーンは存在しません。")
+
+    # 元のモードに戻す
+    # bpy.ops.object.mode_set(mode='OBJECT')
 
 def hide_dummy_bones(active_object):
     # アクティブなオブジェクトが存在しない場合、エラーメッセージを表示
@@ -28,7 +87,7 @@ def hide_dummy_bones(active_object):
         if target_bone_name_part in bone.name:
             bone.bone.hide = True
 
-def create_custom_shape():
+def create_custom_shape(shape_type="cube", size=0.5, color=(1, 1, 1, 1)):
     # 新しいコレクション "WGT" を作成
     if "WGT" not in bpy.data.collections:
         wgt_collection = bpy.data.collections.new("WGT")
@@ -36,20 +95,35 @@ def create_custom_shape():
     else:
         wgt_collection = bpy.data.collections["WGT"]
 
-    # カスタムシェイプオブジェクトを作成
-    bpy.ops.mesh.primitive_cube_add(size=0.5)
+    # shape_typeに基づいてカスタムシェイプオブジェクトを作成
+    if shape_type == "cube":
+        bpy.ops.mesh.primitive_cube_add(size=size)
+    elif shape_type == "plane":
+        bpy.ops.mesh.primitive_plane_add(size=size)
+    elif shape_type == "sphere":
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=size/2)  # radiusはsizeの半分
+    else:
+        raise ValueError(f"Unknown shape_type: {shape_type}")
+
     custom_shape = bpy.context.active_object
-    custom_shape.name = "WGT-Bone_cube"
+    custom_shape.name = f"WGT-Bone_{shape_type}"
 
     # カスタムシェイプオブジェクトを "WGT" コレクションに追加
     wgt_collection.objects.link(custom_shape)
     # カスタムシェイプをデフォルトのシーンコレクションから削除
     bpy.context.collection.objects.unlink(custom_shape)
 
+    # カスタムシェイプをワイヤーフレーム表示にする
+    custom_shape.display_type = 'WIRE'
+
+    # ワイヤーフレームの色を設定
+    custom_shape.color = color
+
     # カスタムシェイプオブジェクトを非表示に設定
     custom_shape.hide_viewport = True
 
     return custom_shape
+
 
 def draw_bone_constraints(context, layout):
     armature_obj = context.active_object
@@ -124,6 +198,7 @@ def draw_leg_constraints(context, layout):
                         row = layout.row()
                         row.label(text=displayName)
                         row.prop(constraint, "influence", slider=True)
+
 def ik2fk(context,target, pole, upper_fk, fore_fk):
     amt = bpy.context.object
     set_translation(target, fore_fk.tail)
@@ -141,6 +216,11 @@ def set_translation(bone, loc):
     mat[2][3] = loc[2]
     bone.matrix = mat
 
+class BoneGroups(Enum):
+    IK_HANDLE = "IK_handle"
+    POLE_HANDLE = "Pole_handle"
+    BODY_HANDLE = "body_handle"
+    CENTER_HANDLE = "center_handle"
 
 class CreateWristIKOperator(Operator):
     bl_idname = "object.create_wrist_ik"
@@ -221,7 +301,8 @@ class CreateWristIKOperator(Operator):
                         pole_bone.tail.z = pole_bone.head.z
 
             bpy.ops.object.mode_set(mode='POSE')
-            custom_shape = create_custom_shape()
+            custom_shape = create_custom_shape("cube",1,(0, 0, 1, 1))
+            custom_shapePole = create_custom_shape("sphere",0.5,(0, 1, 0, 1))
             
             for bone_name in ["L_lower_arm", "R_lower_arm","L_lower_arm_dummy","R_lower_arm_dummy"]:
                 bone = armature_obj.pose.bones.get(bone_name)
@@ -252,12 +333,17 @@ class CreateWristIKOperator(Operator):
 
                 pbone0 = armature_obj.pose.bones["L_hand_IK"]
                 pbone0.custom_shape = custom_shape
+                print("test")
+                assign_bone_to_group("L_hand_IK",BoneGroups.IK_HANDLE)
                 pbone1 = armature_obj.pose.bones["R_hand_IK"]
                 pbone1.custom_shape = custom_shape
+                assign_bone_to_group("R_hand_IK",BoneGroups.IK_HANDLE)
                 pbone2 = armature_obj.pose.bones["L_hand_pole"]
-                pbone2.custom_shape = custom_shape
+                pbone2.custom_shape = custom_shapePole
+                assign_bone_to_group("L_hand_pole",BoneGroups.POLE_HANDLE)
                 pbone3 = armature_obj.pose.bones["R_hand_pole"]
-                pbone3.custom_shape = custom_shape
+                pbone3.custom_shape = custom_shapePole
+                assign_bone_to_group("R_hand_pole",BoneGroups.POLE_HANDLE)
 
             # Add Inverse Kinematics Limit to specified bones
             bones_to_add_ik_limit = ["L_lower_arm", "R_lower_arm", "L_lower_arm_dummy", "R_lower_arm_dummy"]
@@ -320,7 +406,7 @@ class MakeRigOperator(bpy.types.Operator):
             
             # ポーズモードからオブジェクトモードに切り替え
             bpy.ops.object.mode_set(mode='OBJECT')
-            
+            create_colored_bone_groups(rig)
             self.report({'INFO'}, "Rig created and constraints added.")
         else:
             self.report({'ERROR'}, "Please select an armature in Object Mode.")
@@ -420,7 +506,8 @@ class CreateLegIKOperator(bpy.types.Operator):
 
             # Switch to pose mode and add constraints
             bpy.ops.object.mode_set(mode='POSE')
-            custom_shape = create_custom_shape()
+            custom_shape = create_custom_shape("cube",0.5,(0, 0, 1, 1))
+            custom_shapePole = create_custom_shape("sphere",0.5,(0, 1, 0, 1))
 
             for bone_names in leg_bones_sets:
                 middle_bone_name = bone_names[1]
@@ -451,8 +538,10 @@ class CreateLegIKOperator(bpy.types.Operator):
 
                         pbone = armature_obj.pose.bones[ik_bone_name]
                         pbone.custom_shape = custom_shape
+                        assign_bone_to_group(ik_bone_name,BoneGroups.IK_HANDLE)
                         pbone0 = armature_obj.pose.bones[pole_target_name]
-                        pbone0.custom_shape = custom_shape
+                        pbone0.custom_shape = custom_shapePole
+                        assign_bone_to_group(pole_target_name,BoneGroups.POLE_HANDLE)
 
             # Add Inverse Kinematics Limit to specified bones
             bones_to_add_ik_limit = ["L_lower_leg", "R_lower_leg", "L_lower_leg_dummy", "R_lower_leg_dummy"]
