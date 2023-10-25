@@ -324,6 +324,36 @@ class CreateTorsoRig(bpy.types.Operator):
                 assign_bone_to_group(bone,BoneGroups.BODY_HANDLE)
             armature.pose.bones[bone].custom_shape = custom_shape
 
+        #head_rotの作成(頭が正面を向く処理)
+        bpy.ops.object.mode_set(mode='EDIT')
+        head_rot_bone = armature.data.edit_bones.new("head_rot")
+        # headボーンとneckボーンを取得
+        head_bone = armature.data.edit_bones.get("head")
+        neck_bone = armature.data.edit_bones.get("neck")
+        # headボーンやneckボーンが存在しない場合、エラーメッセージを表示して終了
+        if not head_bone or not neck_bone:
+            print("Required bones (head or neck) not found!")
+            return
+        # Connectedをオフにする
+        head_bone.use_connect = False
+        neck_bone.use_connect = False
+        # head_rotボーンの位置を設定
+        head_rot_bone.head = head_bone.head
+        head_rot_bone.tail = head_rot_bone.head + mathutils.Vector((0, 0.1, 0))
+        # 親子関係を設定
+        head_rot_bone.parent = neck_bone
+        head_bone.parent = head_rot_bone
+        # ポーズモードに切り替えてコンストレイントを追加
+        bpy.ops.object.mode_set(mode='POSE')
+        head_rot_pose_bone = armature.pose.bones["head_rot"]
+        copy_rot_constraint = head_rot_pose_bone.constraints.new(type='COPY_ROTATION')
+        copy_rot_constraint.target = bpy.data.objects["RigPlus"]
+        copy_rot_constraint.subtarget = "center"
+        copy_rot_constraint.target_space = 'WORLD'
+        copy_rot_constraint.owner_space = 'WORLD'
+        copy_rot_constraint.influence = 1.0
+        # ポーズモードからオブジェクトモードに切り替え
+        bpy.ops.object.mode_set(mode='OBJECT')
         return {'FINISHED'}
 
 class BoneGroups(Enum):
@@ -523,6 +553,9 @@ class MakeRigOperator(bpy.types.Operator):
             #暫定でもとのアーマチュアの髪のコンストレイントを削除/RigPlusのHairボーンを削除
             modify_bones_with_string(selected_obj.name,"Hair")
             modify_bones_with_string(rig.name,"Hair")
+
+
+            
             self.report({'INFO'}, "Rig created and constraints added.")
         else:
             self.report({'ERROR'}, "Please select an armature in Object Mode.")
