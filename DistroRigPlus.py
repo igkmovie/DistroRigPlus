@@ -511,7 +511,13 @@ class CreateWristIKOperator(Operator):
                 copy_transform_constraint.owner_space = 'LOCAL_WITH_PARENT'
                 copy_transform_constraint.target_space = 'LOCAL_OWNER_ORIENT'
                 copy_transform_constraint.influence = 0
-            hide_dummy_bones(armature_obj)    
+            hide_dummy_bones(armature_obj)
+            hand_sets = ["R_hand","L_hand"]
+            for hand in hand_sets:
+                assign_bone_to_group(hand, BoneGroups.BODY_HANDLE)
+                custom = create_custom_shape("circle",3,"Y")
+                pbonehand = armature_obj.pose.bones[hand]
+                pbonehand.custom_shape = custom
             return {'FINISHED'}
         else:
             self.report({'ERROR'}, "アクティブなオブジェクトがアーマチュアではありません")
