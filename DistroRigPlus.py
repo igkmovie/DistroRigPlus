@@ -10,6 +10,60 @@ import mathutils
 import math 
 from enum import Enum
 
+#とりあえずHairのボーンとHairのコンストレイントを削除するメソッドを作成、いずれ消す
+def modify_bones_with_string(armature_name="RigPlus", target_string="hair"):
+    # アーマチュアを取得
+    armature = bpy.data.objects.get(armature_name)
+    
+    # アーマチュアが存在しない場合、エラーメッセージを表示して終了
+    if not armature:
+        print(f"No armature named {armature_name} found!")
+        return
+
+    # エディットモードに切り替え
+    bpy.context.view_layer.objects.active = armature
+
+    if armature_name == "RigPlus":
+        bpy.ops.object.mode_set(mode='EDIT')
+        # 指定された文字列を含むボーンを検索して削除
+        bones_to_delete = [bone for bone in armature.data.edit_bones if target_string in bone.name]
+        for bone in bones_to_delete:
+            armature.data.edit_bones.remove(bone)
+        bpy.ops.object.mode_set(mode='OBJECT')
+    else:
+        bpy.ops.object.mode_set(mode='POSE')
+        # 指定された文字列を含むボーンを検索してコンストレイントを削除
+        bones_to_clear_constraints = [bone for bone in armature.pose.bones if target_string in bone.name]
+        for bone in bones_to_clear_constraints:
+            for constraint in bone.constraints:
+                bone.constraints.remove(constraint)
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+# 指定したアーマチュアのすべてのボーンのコンストレイントを非表示にするメソッド
+# ただし、コンストレイントの名前にexclude_stringが含まれている場合は非表示にしない
+def hide_constraints_of_armature(armature_name="RigPlus", exclude_string="_rig"):
+    # アーマチュアを取得
+    armature = bpy.data.objects.get(armature_name)
+    
+    # アーマチュアが存在しない場合、エラーメッセージを表示して終了
+    if not armature:
+        print(f"No armature named {armature_name} found!")
+        return
+    
+    # ポーズモードに切り替え
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode='POSE')
+
+    # すべてのボーンのコンストレイントを非表示にする
+    # ただし、コンストレイントの名前に exclude_string が含まれている場合は除外
+    for bone in armature.pose.bones:
+        for constraint in bone.constraints:
+            if exclude_string not in constraint.name:
+                constraint.mute = True
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+
 def create_colored_bone_groups(active_obj):
     """
     active_obj: 対象のArmatureオブジェクト
@@ -27,9 +81,9 @@ def create_colored_bone_groups(active_obj):
         'IK_handle': (0.0, 0.0, 1.0),  # 青色
         'Pole_handle': (1.0, 1.0, 0.0),  # 黄色
         'body_handle': (1.0, 0.5, 0.0),  # オレンジ色
-        'center_handle': (0.5, 0.0, 0.5)  # 紫色
+        'center_handle': (0.5, 0.0, 0.5),  # 紫色
+        'controller_handle': (0.0, 1.0, 0.0)  # 緑色
     }
-
     for name, color in bone_group_data.items():
         if name not in active_obj.pose.bone_groups:
             bg = active_obj.pose.bone_groups.new(name=name)
@@ -87,7 +141,7 @@ def hide_dummy_bones(active_object):
         if target_bone_name_part in bone.name:
             bone.bone.hide = True
 
-def create_custom_shape(shape_type="cube", size=0.5):
+def create_custom_shape(shape_type="cube", size=0.5, up_axis='Z'):
     # 新しいコレクション "WGT" を作成
     if "WGT" not in bpy.data.collections:
         wgt_collection = bpy.data.collections.new("WGT")
@@ -102,24 +156,37 @@ def create_custom_shape(shape_type="cube", size=0.5):
         bpy.ops.mesh.primitive_plane_add(size=size)
     elif shape_type == "sphere":
         bpy.ops.mesh.primitive_uv_sphere_add(radius=size/2)  # radiusはsizeの半分
+    elif shape_type == "circle":  # ここで"circle"を追加
+        bpy.ops.mesh.primitive_circle_add(radius=size/2, fill_type='NGON')  # NGONで塗りつぶし
     else:
         raise ValueError(f"Unknown shape_type: {shape_type}")
 
     custom_shape = bpy.context.active_object
     custom_shape.name = f"WGT-Bone_{shape_type}"
 
+    # up_axisに合わせてオブジェクトを回転
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    
+    if up_axis == 'X':
+        bpy.ops.transform.rotate(value=-1.5708, orient_axis='Y')  # Y軸を中心に-90度回転
+    elif up_axis == 'Y':
+        bpy.ops.transform.rotate(value=1.5708, orient_axis='X')   # X軸を中心に90度回転
+    elif up_axis != 'Z':
+        raise ValueError(f"Invalid up_axis: {up_axis}")
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+
     # カスタムシェイプオブジェクトを "WGT" コレクションに追加
     wgt_collection.objects.link(custom_shape)
     # カスタムシェイプをデフォルトのシーンコレクションから削除
     bpy.context.collection.objects.unlink(custom_shape)
 
-    # カスタムシェイプをワイヤーフレーム表示にする
-    custom_shape.display_type = 'WIRE'
-
     # カスタムシェイプオブジェクトを非表示に設定
     custom_shape.hide_viewport = True
 
     return custom_shape
+
 
 
 
@@ -214,11 +281,57 @@ def set_translation(bone, loc):
     mat[2][3] = loc[2]
     bone.matrix = mat
 
+class CreateTorsoRig(bpy.types.Operator):
+    bl_idname = "object.createtorso_rig"
+    bl_label = "Set Torso Rig Custom Shapes"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    # Scale properties for each bone
+    center_scale: bpy.props.FloatProperty(name="Center Scale", default=3)
+    hips_scale: bpy.props.FloatProperty(name="Hips Scale", default=5)
+    spine_scale: bpy.props.FloatProperty(name="Spine Scale", default=3)
+    chest_scale: bpy.props.FloatProperty(name="Chest Scale", default=2.5)
+    upper_chest_scale: bpy.props.FloatProperty(name="Upper Chest Scale", default=4)
+    neck_scale: bpy.props.FloatProperty(name="Neck Scale", default=2)
+    head_scale: bpy.props.FloatProperty(name="Head Scale", default=1)
+
+    def execute(self, context):
+        armature_name = "RigPlus"
+        armature = bpy.data.objects.get(armature_name)
+        
+        if not armature:
+            self.report({'ERROR'}, f"No armature named {armature_name} found!")
+            return {'CANCELLED'}
+
+        bone_scales = {
+            "center": self.center_scale,
+            "hips": self.hips_scale,
+            "spine": self.spine_scale,
+            "chest": self.chest_scale,
+            "upper_chest": self.upper_chest_scale,
+            "neck": self.neck_scale,
+            "head": self.head_scale,
+        }
+        for bone, scale in bone_scales.items():
+            if bone == "head":
+                custom_shape = create_custom_shape("cube", scale)
+                assign_bone_to_group(bone,BoneGroups.BODY_HANDLE)
+            elif bone == "center":
+                custom_shape = create_custom_shape("plane", scale)
+                assign_bone_to_group(bone,BoneGroups.CENTER_HANDLE)
+            else:
+                custom_shape = create_custom_shape("circle", scale,"Y")
+                assign_bone_to_group(bone,BoneGroups.BODY_HANDLE)
+            armature.pose.bones[bone].custom_shape = custom_shape
+
+        return {'FINISHED'}
+
 class BoneGroups(Enum):
     IK_HANDLE = "IK_handle"
     POLE_HANDLE = "Pole_handle"
     BODY_HANDLE = "body_handle"
     CENTER_HANDLE = "center_handle"
+    CONTROLLER_HANDLE = "controller_handle"
 
 class CreateWristIKOperator(Operator):
     bl_idname = "object.create_wrist_ik"
@@ -400,10 +513,16 @@ class MakeRigOperator(bpy.types.Operator):
                 # ターゲットのボーンも設定
                 constraint.target_space = 'WORLD'
                 constraint.owner_space = 'WORLD'
-            
+                # コンストレイントの名前に[_rig]を追加
+                constraint.name = constraint.name + "_rig"
+            hide_constraints_of_armature(selected_obj.name,"_rig")
             # ポーズモードからオブジェクトモードに切り替え
             bpy.ops.object.mode_set(mode='OBJECT')
+            # ボーングループの作成
             create_colored_bone_groups(rig)
+            #暫定でもとのアーマチュアの髪のコンストレイントを削除/RigPlusのHairボーンを削除
+            modify_bones_with_string(selected_obj.name,"Hair")
+            modify_bones_with_string(rig.name,"Hair")
             self.report({'INFO'}, "Rig created and constraints added.")
         else:
             self.report({'ERROR'}, "Please select an armature in Object Mode.")
@@ -879,6 +998,8 @@ class IKToolPanel(bpy.types.Panel):
         box = layout.box()
         box.label(text="Rig Tools:", icon='ARMATURE_DATA')
         box.operator("object.make_rig", text="Rigを作成")
+        # 体幹のRig作成
+        box.operator("object.createtorso_rig", text="体幹のRigを作成")
         # Checkbox for toggling visibility
         layout.prop(settings, "show_arm_ik")
         if settings.show_arm_ik:
@@ -916,7 +1037,7 @@ def register():
     bpy.utils.register_class(IK2FKLeftOperator)
     bpy.utils.register_class(CopyIKtoFKLeftOperator)
     bpy.utils.register_class(CopyIKtoFKRightOperator)
-
+    bpy.utils.register_class(CreateTorsoRig)
     bpy.utils.register_class(CopyLeftLegIKtoFKOperator)
     bpy.utils.register_class(CopyRightLegIKtoFKOperator)
     bpy.utils.register_class(IK2FKLeftLegOperator)
@@ -933,7 +1054,7 @@ def unregister():
     bpy.utils.unregister_class(IK2FKLeftOperator)
     bpy.utils.unregister_class(CopyIKtoFKLeftOperator)
     bpy.utils.unregister_class(CopyIKtoFKRightOperator)
-
+    bpy.utils.unregister_class(CreateTorsoRig)
     bpy.utils.unregister_class(CopyLeftLegIKtoFKOperator)
     bpy.utils.unregister_class(CopyRightLegIKtoFKOperator)
     bpy.utils.unregister_class(IK2FKLeftLegOperator)
