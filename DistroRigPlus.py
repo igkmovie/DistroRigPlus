@@ -602,7 +602,7 @@ class CreateLegIKOperator(bpy.types.Operator):
                     if end_bone:
                         new_bone = armature.edit_bones.new(ik_bone_name)
                         new_bone.head = end_bone.head
-                        new_bone.tail = new_bone.head + mathutils.Vector((0, 0, -0.1))
+                        new_bone.tail = new_bone.head + mathutils.Vector((0, 0.1, 0))
                         new_bone.parent = armature.edit_bones["Root"]
 
             # Create dummy bones for the legs
@@ -655,8 +655,8 @@ class CreateLegIKOperator(bpy.types.Operator):
                     if pole_bone and lower_leg_bone:
                         pole_bone.head.z = lower_leg_bone.head.z
                         pole_bone.tail.z = lower_leg_bone.head.z
-                        pole_bone.head.y = ik_bone.tail.y
-                        pole_bone.tail.y = ik_bone.tail.y - 0.1  # -0.1を調整することで望む位置に設定
+                        pole_bone.head.y = ik_bone.tail.y -0.25
+                        pole_bone.tail.y = ik_bone.tail.y - 0.35  # -0.1を調整することで望む位置に設定
 
             # Switch to pose mode and add constraints
             bpy.ops.object.mode_set(mode='POSE')
