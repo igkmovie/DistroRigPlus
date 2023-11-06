@@ -1021,6 +1021,19 @@ class IKToolSettings(bpy.types.PropertyGroup):
         default=True
     )
 
+def draw_head_constraint(context, layout):
+    # ポーズボーンを取得
+    ob = context.active_object
+    pbone = ob.pose.bones.get("head_rot")
+    
+    # head_rotボーンが存在し、そのボーンにCopyRotationコンストレイントがあるかを確認
+    if pbone and any(c.type == 'COPY_ROTATION' for c in pbone.constraints):
+        # CopyRotationコンストレイントを見つける
+        copy_rot_constraint = next(c for c in pbone.constraints if c.type == 'COPY_ROTATION')
+        # スライダーをUIに追加
+        row = layout.row()
+        row.prop(copy_rot_constraint, "influence", slider=True, text="Head Rot Influence")
+
 
 class IKToolPanel(bpy.types.Panel):
     bl_label = "DistroRigPlus"
@@ -1033,16 +1046,20 @@ class IKToolPanel(bpy.types.Panel):
         layout = self.layout
         settings = context.scene.ik_tool_settings
 
-        # Rigを作成
+        # Rigを作成のみのボックス
         box = layout.box()
         box.label(text="Rig Tools:", icon='ARMATURE_DATA')
         box.operator("object.make_rig", text="Rigを作成")
-        # 体幹のRig作成
+        
+        # 別のボックスに「体幹のRigを作成」を配置
+        box = layout.box()
+        box.label(text="Torso Rig Tools:", icon='ARMATURE_DATA')
         box.operator("object.createtorso_rig", text="体幹のRigを作成")
-        # Checkbox for toggling visibility
+        draw_head_constraint(context, box)  # ここで関数を呼び出す
+
+        # 腕IKの表示設定
         layout.prop(settings, "show_arm_ik")
         if settings.show_arm_ik:
-            # Draw 腕IK作成 section
             box = layout.box()
             box.label(text="腕IK作成:", icon='CONSTRAINT_BONE')
             box.operator("object.create_wrist_ik", text="腕IK作成")
@@ -1054,9 +1071,9 @@ class IKToolPanel(bpy.types.Panel):
             box.operator("pose.ik_to_fk_left", text="IK to FK βver")
             box.operator("pose.copy_ik_to_fk_left", text="FK to IK")
 
+        # 足IKの表示設定
         layout.prop(settings, "show_leg_ik")
         if settings.show_leg_ik:
-            # Draw 足IK作成 section
             box = layout.box()
             box.label(text="足IK Tools:", icon='CONSTRAINT_BONE')
             box.operator("object.create_leg_ik", text="足IK作成")
@@ -1067,6 +1084,7 @@ class IKToolPanel(bpy.types.Panel):
             box.label(text="Left leg:", icon='CONSTRAINT_BONE')
             box.operator("pose.ik_to_fk_left_leg", text="IK to FK βver")
             box.operator("pose.copy_left_leg_ik_to_fk", text="FK to IK ")
+
 
 def register():
     bpy.utils.register_class(CreateLegIKOperator)
