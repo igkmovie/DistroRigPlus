@@ -187,9 +187,6 @@ def create_custom_shape(shape_type="cube", size=0.5, up_axis='Z'):
 
     return custom_shape
 
-
-
-
 def draw_bone_constraints(context, layout):
     armature_obj = context.active_object
     if armature_obj:
@@ -726,6 +723,7 @@ class CreateLegIKOperator(bpy.types.Operator):
                 copy_transform_constraint.target_space = 'LOCAL_OWNER_ORIENT'
                 copy_transform_constraint.influence = 0    
             hide_dummy_bones(armature_obj) 
+            bpy.ops.object.mode_set(mode='OBJECT')
             return {'FINISHED'}
         else:
             self.report({'ERROR'}, "アクティブなオブジェクトがアーマチュアではありません")
@@ -781,6 +779,7 @@ class IK2FKLeftOperator(bpy.types.Operator):
             self.report({'ERROR'}, "左腕のボーンが見つかりません")
             return {'CANCELLED'}
         
+#IKをFKにする計算もメソッド     
 def ik2fk_Hand(context,target, pole, upper_fk, fore_fk,upper_Ik):
     amt = bpy.context.object
     set_translation(target, fore_fk.tail)
@@ -797,7 +796,6 @@ def ik2fk_Hand(context,target, pole, upper_fk, fore_fk,upper_Ik):
     # amt.pose.bones[pole.name].bone.select = True
     # bpy.ops.view3d.snap_selected_to_cursor(False)
     # pole.location.z = pole.location.z+0.01
-
 # 右腕のIKからFKへの情報のコピーを行うオペレーター
 class CopyIKtoFKRightOperator(bpy.types.Operator):
     bl_idname = "pose.copy_ik_to_fk_right"
@@ -879,8 +877,7 @@ class CopyIKtoFKLeftOperator(bpy.types.Operator):
                 self.copy_bone_transform(upper_arm_fk, upper_arm_ik)
                 self.copy_bone_transform(lower_arm_fk, lower_arm_ik)
 
-        return {'FINISHED'}
-    
+        return {'FINISHED'}  
 # 右脚のIKからFKへの情報のコピーを行うオペレーター
 class CopyRightLegIKtoFKOperator(bpy.types.Operator):
     bl_idname = "pose.copy_right_leg_ik_to_fk"
@@ -922,8 +919,6 @@ class CopyRightLegIKtoFKOperator(bpy.types.Operator):
                 self.copy_bone_transform(lower_leg_fk, lower_leg_ik)
 
         return {'FINISHED'}
-
-
 # 左脚のIKからFKへの情報のコピーを行うオペレーター
 class CopyLeftLegIKtoFKOperator(bpy.types.Operator):
     bl_idname = "pose.copy_left_leg_ik_to_fk"
@@ -965,9 +960,7 @@ class CopyLeftLegIKtoFKOperator(bpy.types.Operator):
                 self.copy_bone_transform(lower_leg_fk, lower_leg_ik)
 
         return {'FINISHED'}
-    
-
-
+#右足IKをFKにするパネル
 class IK2FKRightLegOperator(bpy.types.Operator):
     bl_idname = "pose.ik_to_fk_right_leg"
     bl_label = "IK to FK (Right Leg)"
@@ -986,7 +979,7 @@ class IK2FKRightLegOperator(bpy.types.Operator):
         else:
             self.report({'ERROR'}, "右足のボーンが見つかりません")
             return {'CANCELLED'}
-        
+#左足IKをFKにするパネル        
 class IK2FKLeftLegOperator(bpy.types.Operator):
     bl_idname = "pose.ik_to_fk_left_leg"
     bl_label = "IK to FK (Left Leg)"
@@ -1006,21 +999,24 @@ class IK2FKLeftLegOperator(bpy.types.Operator):
             self.report({'ERROR'}, "左足のボーンが見つかりません")
             return {'CANCELLED'}
         
-
-
-# 1. Define a custom property group
+# パネル設定用
 class IKToolSettings(bpy.types.PropertyGroup):
     show_arm_ik: bpy.props.BoolProperty(
         name="Show 腕IKSetting",
         description="Toggle visibility of 腕IK作成 section",
-        default=True
+        default=False
     )
     show_leg_ik: bpy.props.BoolProperty(
         name="Show 足IKSettig",
         description="Toggle visibility of 足IK作成 section",
-        default=True
+        default=False
     )
-
+    show_toe_rig: bpy.props.BoolProperty(
+        name="Show つま先・踵Rig",
+        description="Toggle visibility of つま先・踵Rig section",
+        default=False
+    )
+#パネル設定用
 def draw_head_constraint(context, layout):
     # ポーズボーンを取得
     ob = context.active_object
@@ -1033,8 +1029,7 @@ def draw_head_constraint(context, layout):
         # スライダーをUIに追加
         row = layout.row()
         row.prop(copy_rot_constraint, "influence", slider=True, text="Head Rot Influence")
-
-
+#パネル設定用
 class IKToolPanel(bpy.types.Panel):
     bl_label = "DistroRigPlus"
     bl_idname = "OBJECT_PT_ik_tools"
@@ -1085,6 +1080,188 @@ class IKToolPanel(bpy.types.Panel):
             box.operator("pose.ik_to_fk_left_leg", text="IK to FK βver")
             box.operator("pose.copy_left_leg_ik_to_fk", text="FK to IK ")
 
+        # 足IKの表示設定
+        layout.prop(settings, "show_toe_rig")
+        if settings.show_toe_rig:
+            box = layout.box()
+            box.label(text="つま先・踵Rig:", icon='CONSTRAINT_BONE')
+            box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")
+
+#つま先と踵のリグ
+class OBJECT_OT_CreateToeHeelRig(bpy.types.Operator):
+    bl_idname = "object.create_toe_heel_rig"
+    bl_label = "Create Toe and Heel Rig"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        armature_obj = context.object
+        # Ensure the selected object is an Armature
+        if not armature_obj or armature_obj.type != 'ARMATURE':
+            self.report({'ERROR'}, "Selected object must be an Armature.")
+            return {'CANCELLED'}
+        # Switch to Edit mode
+        bpy.ops.object.mode_set(mode='EDIT')
+        armature = context.object.data
+        edit_bones = armature.edit_bones
+
+        root_bone = edit_bones.get('Root')
+        if not root_bone:
+            self.report({'ERROR'}, "No 'Root' bone found.")
+            return {'CANCELLED'}
+
+        # Helper function to set up the new bone based on an existing bone
+        def setup_bone(new_bone_name, ref_bone, use_tail=False, offset=(0, 0.01, 0)):
+            new_bone = edit_bones.new(new_bone_name)
+            new_bone.head = ref_bone.tail if use_tail else ref_bone.head
+            new_bone.tail.x = ref_bone.head.x
+            new_bone.tail.y = ref_bone.head.y + offset[1]
+            new_bone.tail.z = offset[2] if use_tail else ref_bone.head.z
+            new_bone.parent = ref_bone
+            new_bone.use_connect = False
+            return new_bone
+
+        # Create the necessary bones for each side
+        for side in ['L', 'R']:
+            bpy.ops.object.mode_set(mode='EDIT')
+            foot_ik_name = f"{side}_foot_IK"
+            foot_ik_p_name = f"{side}_foot_IK_P"
+            heel_dummy_name = f"{side}_heel_dummy"
+            toe_base_dummy_name = f"{side}_toeBase_dummy"
+            toe_base_name = f"{side}_toeBase"
+            foot_name = f"{side}_foot"
+            foot_dummy_name = f"{side}_foot_dummy"
+            foot_ik_target_name = f"{side}_foot_IK_target"
+            footRot = f"{side}_footRot"
+            lower_leg = f"{side}_lower_leg"
+            toeBaseRot = f"{side}_toeBaseRot"
+
+
+            # Check for the main IK bone or use the foot bone
+            # ref_bone = edit_bones.get(foot_ik_name) or edit_bones.get(f"{side}_foot")
+            ref_bone = edit_bones.get(foot_ik_name)
+            if not ref_bone:
+                self.report({'ERROR'}, f"Reference bone '{foot_ik_name}' or '{side}_foot' not found.")
+                return {'CANCELLED'}
+
+
+            # Create foot IK parent bone
+            foot_ik_p_bone = edit_bones.new(foot_ik_p_name)
+            foot_ik_bone = edit_bones.get(foot_ik_name)
+            foot_ik_p_bone.head = foot_ik_bone.head
+            foot_ik_p_bone.head.z = 0
+            foot_ik_p_bone.tail = foot_ik_bone.tail
+            foot_ik_p_bone.tail.z = 0
+            foot_ik_p_bone.use_connect = False
+            foot_ik_p_bone.parent = root_bone  # Parent to root bone
+
+            # Create heel dummy bone
+            heel_dummy_bone = setup_bone(heel_dummy_name, foot_ik_p_bone, use_tail=True)
+
+            # Decide which bone to use as a reference for the toe base dummy bone
+            ref_bone = edit_bones.get(toe_base_name) or ref_bone
+
+            # Create toe base dummy bone
+            toe_base_dummy_bone = setup_bone(toe_base_dummy_name, ref_bone, use_tail=True)
+            toe_base_dummy_bone.parent = heel_dummy_bone  # Parent to heel dummy bone
+            # SetUp foot_dummy_bone
+            foot_bone = edit_bones.get(foot_name)
+            foot_dummy_bone = edit_bones.get(foot_dummy_name)
+            if not foot_dummy_bone:
+                # If foot_dummy bone does not exist, create it
+                foot_dummy_bone = edit_bones.new(foot_dummy_name)
+            foot_dummy_bone.head = foot_bone.tail
+            foot_dummy_bone.tail = foot_bone.head
+            foot_dummy_bone.tail.z = 0  # Set Z position to 0
+            foot_dummy_bone.parent = toe_base_dummy_bone  # Set parent to toe base dummy
+            foot_dummy_bone.use_connect = False
+            # Create IK target bones for L and R foot IK bones
+            foot_ik_bone = edit_bones.get(foot_ik_name)
+            if not foot_ik_bone:
+                self.report({'ERROR'}, f"Foot IK bone '{foot_ik_name}' not found.")
+                return {'CANCELLED'}
+            foot_ik_target_bone = edit_bones.new(foot_ik_target_name)
+            foot_ik_target_bone.head = foot_ik_bone.head
+            foot_ik_target_bone.tail = foot_ik_bone.tail
+            foot_ik_target_bone.use_connect = False
+            foot_ik_target_bone.parent = foot_dummy_bone
+
+            # Create footRot for L and R foot
+            foot_bone = edit_bones.get(foot_name)
+            foot_bone.use_connect = False
+            footRot_bone = edit_bones.new(footRot)
+            footRot_bone.head = foot_bone.head
+            footRot_bone.tail = foot_bone.tail
+
+            lower_leg_bone = edit_bones.get(lower_leg)
+            footRot_bone.use_connect = False
+
+            footRot_bone.parent = lower_leg_bone
+            foot_bone.parent = footRot_bone
+            # Create toeBaseRot for L and R toeBase
+            toeBase_bone = edit_bones.get(toe_base_name)
+            toeBaseRot_bone = edit_bones.new(toeBaseRot)
+            toeBaseRot_bone.head = toeBase_bone.head
+            toeBaseRot_bone.tail = toeBase_bone.tail
+            foot_bone = edit_bones.get(foot_name)
+            toeBaseRot_bone.use_connect = False
+            toeBaseRot_bone.parent = foot_bone
+            toeBase_bone.parent = toeBaseRot_bone
+
+        for side in ['L', 'R']:
+            bpy.ops.object.mode_set(mode='POSE')
+            foot_ik_name = f"{side}_foot_IK"
+            foot_ik_p_name = f"{side}_foot_IK_P"
+            heel_dummy_name = f"{side}_heel_dummy"
+            toe_base_dummy_name = f"{side}_toeBase_dummy"
+            toe_base_name = f"{side}_toeBase"
+            foot_name = f"{side}_foot"
+            foot_dummy_name = f"{side}_foot_dummy"
+            foot_ik_target_name = f"{side}_foot_IK_target"
+            footRot = f"{side}_footRot"
+            lower_leg = f"{side}_lower_leg"
+            toeBaseRot = f"{side}_toeBaseRot"
+
+            footbone = armature_obj.pose.bones[foot_name]
+            # コンストレイントを検索して非表示にする
+            for constraint in footbone.constraints:
+                if constraint.name == "Copy Transforms_rig":
+                    constraint.mute = True
+
+            # Copy Location Constraint
+            foot_ik = armature_obj.pose.bones[foot_ik_name]
+            foot_ik_target = armature_obj.pose.bones[foot_ik_target_name]
+            copy_loc_constraint = foot_ik.constraints.new('COPY_LOCATION')
+            copy_loc_constraint.target = armature_obj
+            copy_loc_constraint.subtarget = foot_ik_target.name
+            copy_loc_constraint.target_space = 'WORLD'
+            copy_loc_constraint.owner_space = 'WORLD'
+            # Damped Track Constraint
+            foot_rot = armature_obj.pose.bones[footRot]
+            foot_dummy = armature_obj.pose.bones[foot_dummy_name]
+            damped_track_constraint = foot_rot.constraints.new('DAMPED_TRACK')
+            damped_track_constraint.target = armature_obj
+            damped_track_constraint.subtarget = foot_dummy.name
+            damped_track_constraint.track_axis = 'TRACK_Y'
+
+            toe_base_rot = armature_obj.pose.bones[toeBaseRot]
+            toe_base_dummy = armature_obj.pose.bones[toe_base_dummy_name]
+            damped_track_constraint = toe_base_rot.constraints.new('DAMPED_TRACK')
+            damped_track_constraint.target = armature_obj
+            damped_track_constraint.subtarget = toe_base_dummy.name
+            damped_track_constraint.track_axis = 'TRACK_Y'
+        # Switch back to Object mode at the end
+        # bpy.ops.object.mode_set(mode='OBJECT')
+        # # 
+        # for side in ['L', 'R']:
+        #     bpy.ops.object.mode_set(mode='EDIT')
+        #     foot_ik_p_name = f"{side}_foot_IK_P"
+        #     heel_dummy_name = f"{side}_heel_dummy"
+        #     toe_base_dummy_name = f"{side}_toeBase_dummy"
+
+        #     custom_shape = create_custom_shape("cube", 1)
+        #     assign_bone_to_group(foot_ik_p_name,BoneGroups.IK_HANDLE)
+        #     armature.pose.bones[foot_ik_p_name].custom_shape = custom_shape
+        # return {'FINISHED'}
 
 def register():
     bpy.utils.register_class(CreateLegIKOperator)
@@ -1099,6 +1276,7 @@ def register():
     bpy.utils.register_class(CopyRightLegIKtoFKOperator)
     bpy.utils.register_class(IK2FKLeftLegOperator)
     bpy.utils.register_class(IK2FKRightLegOperator)
+    bpy.utils.register_class(OBJECT_OT_CreateToeHeelRig)
     bpy.utils.register_class(IKToolSettings)
     bpy.utils.register_class(IKToolPanel)
     bpy.types.Scene.ik_tool_settings = bpy.props.PointerProperty(type=IKToolSettings)
@@ -1116,6 +1294,7 @@ def unregister():
     bpy.utils.unregister_class(CopyRightLegIKtoFKOperator)
     bpy.utils.unregister_class(IK2FKLeftLegOperator)
     bpy.utils.unregister_class(IK2FKRightLegOperator)
+    bpy.utils.unregister_class(OBJECT_OT_CreateToeHeelRig)
     del bpy.types.Scene.ik_tool_settings
     bpy.utils.unregister_class(IKToolPanel)
     bpy.utils.unregister_class(IKToolSettings)
