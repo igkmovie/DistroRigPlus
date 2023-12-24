@@ -10,6 +10,34 @@ import mathutils
 import math 
 from enum import Enum
 
+#メッセージポップアップを表示するためのクラス
+class MessagePopupOperator(bpy.types.Operator):
+    bl_idname = "wm.message_popup_operator"
+    bl_label = "Message Popup Operator"
+
+    message: bpy.props.StringProperty(
+        name="Message",
+        description="Message to display in the popup",
+        default="This is a message"
+    )
+
+    def execute(self, context):
+        self.report({'INFO'}, self.message)
+        return {'FINISHED'}
+#メッセージポップアップのラッパー
+def show_popup(message):
+    bpy.ops.wm.message_popup_operator(message=message)
+
+#選択中にアーマチュア内にボーンがあるかないか？を判断するメソッド
+def bone_exist(bone_name):
+    # 現在のコンテキストからアクティブなオブジェクトを取得
+    obj = bpy.context.active_object
+
+    # オブジェクトがアーマチュアであること、およびボーンが存在することを確認
+    if obj and obj.type == 'ARMATURE' and bone_name in obj.data.bones:
+        return True
+    else:
+        return False
 #とりあえずHairのボーンとHairのコンストレイントを削除するメソッドを作成、いずれ消す
 def modify_bones_with_string(armature_name="RigPlus", target_string="hair"):
     # アーマチュアを取得
@@ -366,7 +394,7 @@ class CreateWristIKOperator(Operator):
 
             bpy.ops.object.mode_set(mode='POSE')
             custom_shape = create_custom_shape("cube",1)
-            custom_shapePole = create_custom_shape("sphere",0.5)
+            custom_shapePole = create_custom_shape("cube",0.5)
             
             for bone_name in ["L_lower_arm", "R_lower_arm","L_lower_arm_dummy","R_lower_arm_dummy"]:
                 bone = armature_obj.pose.bones.get(bone_name)
@@ -442,6 +470,7 @@ class CreateWristIKOperator(Operator):
                 custom = create_custom_shape("circle",3,"Y")
                 pbonehand = armature_obj.pose.bones[hand]
                 pbonehand.custom_shape = custom
+                
             return {'FINISHED'}
         else:
             self.report({'ERROR'}, "アクティブなオブジェクトがアーマチュアではありません")
@@ -484,8 +513,15 @@ class MakeRigOperator(bpy.types.Operator):
             modify_bones_with_string(selected_obj.name,"Hair")
             modify_bones_with_string(rig.name,"Hair")
 
+            # 編集モードに切り替え（すでに編集モードの場合は不要）
+            bpy.ops.object.mode_set(mode='EDIT')
+            new_bone = rig.data.edit_bones.new('RigPlus')
+            # ボーンの位置を設定（例として、根元と先端の位置を設定）
+            new_bone.head = (0, 0, 0)
+            new_bone.tail = (0, 0.1, 0)
+            move_bone_to_last_layer_and_hide(rig,"RigPlus")
+            bpy.ops.object.mode_set(mode='OBJECT')
 
-            
             self.report({'INFO'}, "Rig created and constraints added.")
         else:
             self.report({'ERROR'}, "Please select an armature in Object Mode.")
@@ -585,7 +621,7 @@ class CreateLegIKOperator(bpy.types.Operator):
             # Switch to pose mode and add constraints
             bpy.ops.object.mode_set(mode='POSE')
             custom_shape = create_custom_shape("cube",0.5)
-            custom_shapePole = create_custom_shape("sphere",0.5)
+            custom_shapePole = create_custom_shape("cube",0.5)
 
             for bone_names in leg_bones_sets:
                 middle_bone_name = bone_names[1]
@@ -1071,7 +1107,7 @@ class OBJECT_OT_CreateToeHeelRig(bpy.types.Operator):
             custom_shape3 = create_custom_shape("sphere", 0.25)
             assign_bone_to_group(L_foot_dummy_name,BoneGroups.CONTROLLER_HANDLE)
             armature_obj.pose.bones[L_foot_dummy_name].custom_shape = custom_shape3
-
+        #指定したボーンを非表示にする
         bone_names = [
             f"{side}_{bone}"
             for side in ['L', 'R']
@@ -1099,7 +1135,6 @@ def move_bone_to_last_layer_and_hide(armature_obj, bone_name,target_layer = 31 )
     for i in range(len(bone.layers)):
         if i != target_layer:
             bone.layers[i] = False
-
     # オブジェクトモードに戻る
     bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -1173,20 +1208,26 @@ def update_r_foot_bones_influence(self, context):
 # パネル設定用
 class IKToolSettings(bpy.types.PropertyGroup):
     show_arm_ik: bpy.props.BoolProperty(
-        name="Show 腕IKSetting",
-        description="Toggle visibility of 腕IK作成 section",
+        name="OnHandIKSetting",
+        description="Toggle visibility of HandIKSetting section",
         default=False
     )
     show_leg_ik: bpy.props.BoolProperty(
-        name="Show 足IKSettig",
-        description="Toggle visibility of 足IK作成 section",
+        name="OnFootIKSetting",
+        description="Toggle visibility of OnFootIKSetting section",
         default=False
     )
     show_toe_rig: bpy.props.BoolProperty(
-        name="Show つま先・踵Rig",
-        description="Toggle visibility of つま先・踵Rig section",
+        name="OnToe&HeelSetting",
+        description="Toggle visibility of Toe&HeelSetting section",
         default=False
     )
+    show_Troso_rig: bpy.props.BoolProperty(
+        name="OnTrosoSetting",
+        description="Toggle visibility of TrosoSetting section",
+        default=False
+    )
+
     l_foot_influence: bpy.props.FloatProperty(
         name="L Foot Influence",
         default=1.0,
@@ -1238,7 +1279,7 @@ def draw_leg_constraints(context, layout):
         bone_name1 = "L_foot_IK_P"
         bone_exists = bone_name1 in [bone.name for bone in armature_obj.data.bones]
         if not bone_exists:
-            row.label(text="足切IK_ON/OFF",icon='CONSTRAINT_BONE')
+            row.label(text="Ground IK_ON/OFF",icon='CONSTRAINT_BONE')
             for bone_name in bone_names:
                 bone = armature_obj.pose.bones.get(bone_name)
                 if bone:
@@ -1274,7 +1315,7 @@ def draw_bone_constraints(context, layout):
                         row.prop(constraint, "influence", slider=True,text=displayName)
         bone_names = ["R_hand", "L_hand"]
         row = layout.row()
-        row.label(text="腕切IK_ON/OFF",icon='CONSTRAINT_BONE')
+        row.label(text="Ground IK_ON/OFF",icon='CONSTRAINT_BONE')
         for bone_name in bone_names:
             bone = armature_obj.pose.bones.get(bone_name)
             if bone:
@@ -1287,7 +1328,7 @@ def draw_bone_constraints(context, layout):
                     if constraint.type == 'COPY_TRANSFORMS':
                         row = layout.row()
                         row.prop(constraint, "influence", slider=True,text=displayName)
-#
+
                
 #パネル設定用
 class IKToolPanel(bpy.types.Panel):
@@ -1309,55 +1350,80 @@ class IKToolPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         settings = context.scene.ik_tool_settings
+        flg = True;
 
+        if(not flg):
+            return
         # Rigを作成のみのボックス
         box = layout.box()
         box.label(text="Rig Tools:", icon='ARMATURE_DATA')
-        box.operator("object.make_rig", text="Rigを作成")
-        
+        box.operator("object.make_rig", text="Make Rig")
+
+        flg1 = bone_exist("RigPlus")
+        flg2 = bone_exist("head_rot")
+        flg3 = bone_exist("L_hand_pole")
+        flg4 = bone_exist("L_foot_pole")
+        flg5 = bone_exist("L_foot_IK_P")
+
+
+        if(not flg1):
+            return
         # 別のボックスに「体幹のRigを作成」を配置
         box = layout.box()
-        box.label(text="Torso Rig Tools:", icon='ARMATURE_DATA')
-        box.operator("object.createtorso_rig", text="体幹のRigを作成")
-        draw_head_constraint(context, box)  # ここで関数を呼び出す
-
-        # 腕IKの表示設定
-        layout.prop(settings, "show_arm_ik")
-        if settings.show_arm_ik:
-            box = layout.box()
-            box.label(text="腕IK作成:", icon='CONSTRAINT_BONE')
-            box.operator("object.create_wrist_ik", text="腕IK作成")
-            draw_bone_constraints(context, box)
-            box.label(text="Right Arm:", icon='CONSTRAINT_BONE')
-            box.operator("pose.ik_to_fk_right", text="IK to FK βver")
-            box.operator("pose.copy_ik_to_fk_right", text="FK to IK")
-            box.label(text="Left Arm:", icon='CONSTRAINT_BONE')
-            box.operator("pose.ik_to_fk_left", text="IK to FK βver")
-            box.operator("pose.copy_ik_to_fk_left", text="FK to IK")
-
-        # 足IKの表示設定
-        layout.prop(settings, "show_leg_ik")
-        if settings.show_leg_ik:
-            box = layout.box()
-            box.label(text="足IK Tools:", icon='CONSTRAINT_BONE')
-            box.operator("object.create_leg_ik", text="足IK作成")
-            draw_leg_constraints(context, box)
-            box.label(text="Right leg:", icon='CONSTRAINT_BONE')
-            box.operator("pose.ik_to_fk_right_leg", text="IK to FK βver")
-            box.operator("pose.copy_right_leg_ik_to_fk", text="FK to IK")
-            box.label(text="Left leg:", icon='CONSTRAINT_BONE')
-            box.operator("pose.ik_to_fk_left_leg", text="IK to FK βver")
-            box.operator("pose.copy_left_leg_ik_to_fk", text="FK to IK ")
-
-        # 足IKの表示設定
-        layout.prop(settings, "show_toe_rig")
-        if settings.show_toe_rig:
-            box = layout.box()
-            box.label(text="つま先・踵Rig:", icon='CONSTRAINT_BONE')
-            box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")
-            self.draw_foot_influence_sliders(context, box, settings)
+        box.label(text="Rig Make", icon='ARMATURE_DATA')
+        if(not flg2):
+            box.operator("object.createtorso_rig", text="Torso Rig Creation")
+        if(not flg3):
+            box.operator("object.create_wrist_ik",text="Arm IK Creation")
+        if(not flg4):
+            box.operator("object.create_leg_ik", text="Foot IK Creation")
+        if(not flg5):
+            box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")      
+        if(flg2):
+            layout.prop(settings,"show_Troso_rig")
+            if settings.show_Troso_rig:
+                box = layout.box()
+                box.label(text="Troso Rig Setting:", icon='CONSTRAINT_BONE')
+                draw_head_constraint(context, box)  # ここで関数を呼び出す
+        if(flg3):
+            # 腕IKの表示設定
+            layout.prop(settings, "show_arm_ik")
+            if settings.show_arm_ik:
+                box = layout.box()
+                box.label(text="腕IK作成:", icon='CONSTRAINT_BONE')
+                # box.operator("object.create_wrist_ik", text="腕IK作成")
+                draw_bone_constraints(context, box)
+                box.label(text="Right Arm:", icon='CONSTRAINT_BONE')
+                box.operator("pose.ik_to_fk_right", text="IK to FK βver")
+                box.operator("pose.copy_ik_to_fk_right", text="FK to IK")
+                box.label(text="Left Arm:", icon='CONSTRAINT_BONE')
+                box.operator("pose.ik_to_fk_left", text="IK to FK βver")
+                box.operator("pose.copy_ik_to_fk_left", text="FK to IK")
+        if(flg4):
+            # 足IKの表示設定
+            layout.prop(settings, "show_leg_ik")
+            if settings.show_leg_ik:
+                box = layout.box()
+                box.label(text="足IK Tools:", icon='CONSTRAINT_BONE')
+                # box.operator("object.create_leg_ik", text="足IK作成")
+                draw_leg_constraints(context, box)
+                box.label(text="Right leg:", icon='CONSTRAINT_BONE')
+                box.operator("pose.ik_to_fk_right_leg", text="IK to FK βver")
+                box.operator("pose.copy_right_leg_ik_to_fk", text="FK to IK")
+                box.label(text="Left leg:", icon='CONSTRAINT_BONE')
+                box.operator("pose.ik_to_fk_left_leg", text="IK to FK βver")
+                box.operator("pose.copy_left_leg_ik_to_fk", text="FK to IK ")
+        if(flg5):
+            # 足IKの表示設定
+            layout.prop(settings, "show_toe_rig")
+            if settings.show_toe_rig:
+                box = layout.box()
+                box.label(text="Toe&HeelRig:", icon='CONSTRAINT_BONE')
+                # box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")
+                self.draw_foot_influence_sliders(context, box, settings)
 
 def register():
+    bpy.utils.register_class(MessagePopupOperator)
     bpy.utils.register_class(CreateLegIKOperator)
     bpy.utils.register_class(CreateWristIKOperator)
     bpy.utils.register_class(MakeRigOperator)
@@ -1376,6 +1442,7 @@ def register():
     bpy.types.Scene.ik_tool_settings = bpy.props.PointerProperty(type=IKToolSettings)
 
 def unregister():
+    bpy.utils.unregister_class(MessagePopupOperator)
     bpy.utils.unregister_class(CreateLegIKOperator)
     bpy.utils.unregister_class(MakeRigOperator)
     bpy.utils.unregister_class(CreateWristIKOperator)
