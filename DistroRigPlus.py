@@ -9,6 +9,59 @@ from bpy.types import Operator, Panel
 import mathutils
 import math 
 from enum import Enum
+import json
+
+# アーマチュア内のボーン名をチェックしてリストを作成するクラス
+class MapBonesToRigPlus(bpy.types.Operator):
+    bl_idname = "object.mapbonestorigplus"
+    bl_label = "Map Bones To RigPlus"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        armature = context.active_object
+        ik_tool_settings = context.scene.ik_tool_settings  # 仮定されたプロパティ名
+        bone_data = json.loads(bone_data_str)
+        # print(bone_data_str)
+        result_data = {}
+        missing_targets = []
+
+        # RigPlus にリストされているボーンを対象とする
+        rigplus_bones = {item['RigPlus']: item for item in bone_data if 'RigPlus' in item and item['RigPlus']}
+
+        if armature and armature.type == 'ARMATURE':
+            for bone in armature.data.bones:
+                # RigPlus にリストされているボーンを探す
+                match = next((item for item in rigplus_bones.values() if item['MMD'] == bone.name or item['Vroid'] == bone.name), None)
+
+                # マッチする項目が見つかれば結果に追加
+                if match:
+                    rigplus_bone_name = match['RigPlus']
+                    result_data[rigplus_bone_name] = bone.name
+                else:
+                    missing_targets.append(bone.name)
+
+        ik_tool_settings.bone_mapping = json.dumps(result_data)
+        ik_tool_settings.missing_targets = json.dumps(missing_targets)
+        print(ik_tool_settings.bone_mapping )
+        return {'FINISHED'}
+
+#rigplus用のボーン名に変更する
+def rename_bones_to_rigplus(armature, context):
+    # IKToolSettingsからbone_mappingを取得
+    ik_tool_settings = context.scene.ik_tool_settings  # 仮定されたプロパティ名
+    bone_mapping = json.loads(ik_tool_settings.bone_mapping)
+    # エディットモードに移行
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    # bone_mappingのValueをキーとして、対応するRigPlus名にボーン名を変更
+    for rigplus_name, armature_bone_name in bone_mapping.items():
+        print(rigplus_name+"/"+armature_bone_name)
+        if armature_bone_name and armature_bone_name in armature.data.edit_bones:
+            armature.data.edit_bones[armature_bone_name].name = rigplus_name
+
+    # オブジェクトモードに戻る
+    bpy.ops.object.mode_set(mode='OBJECT')
 
 #メッセージポップアップを表示するためのクラス
 class MessagePopupOperator(bpy.types.Operator):
@@ -500,8 +553,8 @@ class MakeRigOperator(bpy.types.Operator):
                 constraint.target = rig  # rigアーマチュアをターゲットにする
                 constraint.subtarget = bone.name
                 # ターゲットのボーンも設定
-                constraint.target_space = 'WORLD'
-                constraint.owner_space = 'WORLD'
+                constraint.target_space = 'POSE'
+                constraint.owner_space = 'POSE'
                 # コンストレイントの名前に[_rig]を追加
                 constraint.name = constraint.name + "_rig"
             hide_constraints_of_armature(selected_obj.name,"_rig")
@@ -520,6 +573,7 @@ class MakeRigOperator(bpy.types.Operator):
             new_bone.head = (0, 0, 0)
             new_bone.tail = (0, 0.1, 0)
             move_bone_to_last_layer_and_hide(rig,"RigPlus")
+            rename_bones_to_rigplus(rig,context)
             bpy.ops.object.mode_set(mode='OBJECT')
 
             self.report({'INFO'}, "Rig created and constraints added.")
@@ -1242,6 +1296,16 @@ class IKToolSettings(bpy.types.PropertyGroup):
         max=1.0,
         update=update_r_foot_bones_influence
     )
+    bone_mapping: bpy.props.StringProperty(
+        name="bone_mapping JSON",
+        default="none",
+        description="JSON representation of the multi list"
+    )
+    missing_targets: bpy.props.StringProperty(
+        name="missing_targets List JSON",
+        default="",
+        description="JSON representation of the multi list"
+    )
 #パネル設定用
 def draw_head_constraint(context, layout):
     # ポーズボーンを取得
@@ -1352,7 +1416,12 @@ class IKToolPanel(bpy.types.Panel):
         settings = context.scene.ik_tool_settings
         flg = True;
 
-        if(not flg):
+        # Rigを作成のみのボックス
+        box0 = layout.box()
+        box0.label(text="Rig Tools:", icon='ARMATURE_DATA')
+        box0.operator("object.mapbonestorigplus", text="RigSetUp")
+
+        if(settings.bone_mapping == "none"):
             return
         # Rigを作成のみのボックス
         box = layout.box()
@@ -1422,7 +1491,8 @@ class IKToolPanel(bpy.types.Panel):
                 # box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")
                 self.draw_foot_influence_sliders(context, box, settings)
 
-def register():
+def register():    
+    bpy.utils.register_class(MapBonesToRigPlus)
     bpy.utils.register_class(MessagePopupOperator)
     bpy.utils.register_class(CreateLegIKOperator)
     bpy.utils.register_class(CreateWristIKOperator)
@@ -1442,6 +1512,7 @@ def register():
     bpy.types.Scene.ik_tool_settings = bpy.props.PointerProperty(type=IKToolSettings)
 
 def unregister():
+    bpy.utils.unregister_class(MapBonesToRigPlus)
     bpy.utils.unregister_class(MessagePopupOperator)
     bpy.utils.unregister_class(CreateLegIKOperator)
     bpy.utils.unregister_class(MakeRigOperator)
@@ -1462,3 +1533,290 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+
+
+# CSVデータをJSON文字列として保存
+bone_data_str = """
+[
+  {
+    "RigPlus": "Root",
+    "MMD": "全ての親",
+    "Vroid": "root"
+  },
+  {
+    "RigPlus": "center",
+    "MMD": "センター",
+    "Vroid": "center"
+  },
+  {
+    "RigPlus": "spine",
+    "MMD": "上半身0",
+    "Vroid": "J_Bip_C_Spine"
+  },
+  {
+    "RigPlus": "chest",
+    "MMD": "上半身",
+    "Vroid": "J_Bip_C_Chest"
+  },
+  {
+    "RigPlus": "upper_chest",
+    "MMD": "上半身2",
+    "Vroid": "J_Bip_C_UpperChest"
+  },
+  {
+    "RigPlus": "neck",
+    "MMD": "首",
+    "Vroid": "J_Bip_C_Neck"
+  },
+  {
+    "RigPlus": "head",
+    "MMD": "頭",
+    "Vroid": "J_Bip_C_Head"
+  },
+  {
+    "RigPlus": "L_eye",
+    "MMD": "目.L",
+    "Vroid": "J_Adj_L_FaceEye"
+  },
+  {
+    "RigPlus": "R_eye",
+    "MMD": "目.R",
+    "Vroid": "J_Adj_R_FaceEye"
+  },
+  {
+    "RigPlus": "hips",
+    "MMD": "下半身",
+    "Vroid": "J_Bip_C_Hips"
+  },
+  {
+    "RigPlus": "L_shoulder",
+    "MMD": "肩.L",
+    "Vroid": "J_Bip_L_Shoulder"
+  },
+  {
+    "RigPlus": "L_upper_arm",
+    "MMD": "腕.L",
+    "Vroid": "J_Bip_L_UpperArm"
+  },
+  {
+    "RigPlus": "L_lower_arm",
+    "MMD": "ひじ.L",
+    "Vroid": "J_Bip_L_LowerArm"
+  },
+  {
+    "RigPlus": "L_hand",
+    "MMD": "手首.L",
+    "Vroid": "J_Bip_L_Hand"
+  },
+  {
+    "RigPlus": "L_thumb_1",
+    "MMD": "親指０.L",
+    "Vroid": "J_Bip_L_Thumb1"
+  },
+  {
+    "RigPlus": "L_thumb_2",
+    "MMD": "親指１.L",
+    "Vroid": "J_Bip_L_Thumb2"
+  },
+  {
+    "RigPlus": "L_thumb_3",
+    "MMD": "親指２.L",
+    "Vroid": "J_Bip_L_Thumb3"
+  },
+  {
+    "RigPlus": "L_index_1",
+    "MMD": "人指１.L",
+    "Vroid": "J_Bip_L_Index1"
+  },
+  {
+    "RigPlus": "L_index_2",
+    "MMD": "人指２.L",
+    "Vroid": "J_Bip_L_Index2"
+  },
+  {
+    "RigPlus": "L_index_3",
+    "MMD": "人指３.L",
+    "Vroid": "J_Bip_L_Index3"
+  },
+  {
+    "RigPlus": "L_middle_1",
+    "MMD": "中指１.L",
+    "Vroid": "J_Bip_L_Middle1"
+  },
+  {
+    "RigPlus": "L_middle_2",
+    "MMD": "中指２.L",
+    "Vroid": "J_Bip_L_Middle2"
+  },
+  {
+    "RigPlus": "L_middle_3",
+    "MMD": "中指３.L",
+    "Vroid": "J_Bip_L_Middle3"
+  },
+  {
+    "RigPlus": "L_ring_1",
+    "MMD": "薬指１.L",
+    "Vroid": "J_Bip_L_Ring1"
+  },
+  {
+    "RigPlus": "L_ring_2",
+    "MMD": "薬指２.L",
+    "Vroid": "J_Bip_L_Ring2"
+  },
+  {
+    "RigPlus": "L_ring_3",
+    "MMD": "薬指３.L",
+    "Vroid": "J_Bip_L_Ring3"
+  },
+  {
+    "RigPlus": "L_pinky_1",
+    "MMD": "小指１.L",
+    "Vroid": "J_Bip_L_Little1"
+  },
+  {
+    "RigPlus": "L_pinky_2",
+    "MMD": "小指２.L",
+    "Vroid": "J_Bip_L_Little2"
+  },
+  {
+    "RigPlus": "L_pinky_3",
+    "MMD": "小指３.L",
+    "Vroid": "J_Bip_L_Little3"
+  },
+  {
+    "RigPlus": "L_upper_leg",
+    "MMD": "足.L",
+    "Vroid": "J_Bip_L_UpperLeg"
+  },
+  {
+    "RigPlus": "L_lower_leg",
+    "MMD": "ひざ.L",
+    "Vroid": "J_Bip_L_LowerLeg"
+  },
+  {
+    "RigPlus": "L_foot",
+    "MMD": "足首.L",
+    "Vroid": "J_Bip_L_Foot"
+  },
+  {
+    "RigPlus": "L_toeBase",
+    "MMD": "つま先.L",
+    "Vroid": "J_Bip_L_ToeBase"
+  },
+  {
+    "RigPlus": "R_shoulder",
+    "MMD": "肩.R",
+    "Vroid": "J_Bip_R_Shoulder"
+  },
+  {
+    "RigPlus": "R_upper_arm",
+    "MMD": "腕.R",
+    "Vroid": "J_Bip_R_UpperArm"
+  },
+  {
+    "RigPlus": "R_lower_arm",
+    "MMD": "ひじ.R",
+    "Vroid": "J_Bip_R_LowerArm"
+  },
+  {
+    "RigPlus": "R_hand",
+    "MMD": "手首.R",
+    "Vroid": "J_Bip_R_Hand"
+  },
+  {
+    "RigPlus": "R_thumb_1",
+    "MMD": "親指０.R",
+    "Vroid": "J_Bip_R_Thumb1"
+  },
+  {
+    "RigPlus": "R_thumb_2",
+    "MMD": "親指１.R",
+    "Vroid": "J_Bip_R_Thumb2"
+  },
+  {
+    "RigPlus": "R_thumb_3",
+    "MMD": "親指２.R",
+    "Vroid": "J_Bip_R_Thumb3"
+  },
+  {
+    "RigPlus": "R_index_1",
+    "MMD": "人指１.R",
+    "Vroid": "J_Bip_R_Index1"
+  },
+  {
+    "RigPlus": "R_index_2",
+    "MMD": "人指２.R",
+    "Vroid": "J_Bip_R_Index2"
+  },
+  {
+    "RigPlus": "R_index_3",
+    "MMD": "人指３.R",
+    "Vroid": "J_Bip_R_Index3"
+  },
+  {
+    "RigPlus": "R_middle_1",
+    "MMD": "中指１.R",
+    "Vroid": "J_Bip_R_Middle1"
+  },
+  {
+    "RigPlus": "R_middle_2",
+    "MMD": "中指２.R",
+    "Vroid": "J_Bip_R_Middle2"
+  },
+  {
+    "RigPlus": "R_middle_3",
+    "MMD": "中指３.R",
+    "Vroid": "J_Bip_R_Middle3"
+  },
+  {
+    "RigPlus": "R_ring_1",
+    "MMD": "薬指１.R",
+    "Vroid": "J_Bip_R_Ring1"
+  },
+  {
+    "RigPlus": "R_ring_2",
+    "MMD": "薬指２.R",
+    "Vroid": "J_Bip_R_Ring2"
+  },
+  {
+    "RigPlus": "R_ring_3",
+    "MMD": "薬指３.R",
+    "Vroid": "J_Bip_R_Ring3"
+  },
+  {
+    "RigPlus": "R_pinky_1",
+    "MMD": "小指１.R",
+    "Vroid": "J_Bip_R_Little1"
+  },
+  {
+    "RigPlus": "R_pinky_2",
+    "MMD": "小指２.R",
+    "Vroid": "J_Bip_R_Little2"
+  },
+  {
+    "RigPlus": "R_pinky_3",
+    "MMD": "小指３.R",
+    "Vroid": "J_Bip_R_Little3"
+  },
+  {
+    "RigPlus": "R_upper_leg",
+    "MMD": "足.R",
+    "Vroid": "J_Bip_R_UpperLeg"
+  },
+  {
+    "RigPlus": "R_lower_leg",
+    "MMD": "ひざ.R",
+    "Vroid": "J_Bip_R_LowerLeg"
+  },
+  {
+    "RigPlus": "R_foot",
+    "MMD": "足首.R",
+    "Vroid": "J_Bip_R_Foot"
+  },
+  {
+    "RigPlus": "R_toeBase",
+    "MMD": "つま先.R",
+    "Vroid": "J_Bip_R_ToeBase"
+  }
+]
+"""
