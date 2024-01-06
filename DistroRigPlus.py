@@ -18,31 +18,49 @@ class MapBonesToRigPlus(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        armature = context.active_object
-        ik_tool_settings = context.scene.ik_tool_settings  # 仮定されたプロパティ名
+        # JSON文字列からデータを読み込む
         bone_data = json.loads(bone_data_str)
-        # print(bone_data_str)
-        result_data = {}
-        missing_targets = []
 
-        # RigPlus にリストされているボーンを対象とする
-        rigplus_bones = {item['RigPlus']: item for item in bone_data if 'RigPlus' in item and item['RigPlus']}
+        # 初期のbone_mappingを作成（すべてのRigPlus名に対して空のTargetを設定）
+        bone_mapping = {item['RigPlus']: "" for item in bone_data}
 
-        if armature and armature.type == 'ARMATURE':
-            for bone in armature.data.bones:
-                # RigPlus にリストされているボーンを探す
-                match = next((item for item in rigplus_bones.values() if item['MMD'] == bone.name or item['Vroid'] == bone.name), None)
+        # 選択中のアーマチュアを取得
+        armature = context.active_object
 
-                # マッチする項目が見つかれば結果に追加
-                if match:
-                    rigplus_bone_name = match['RigPlus']
-                    result_data[rigplus_bone_name] = bone.name
-                else:
-                    missing_targets.append(bone.name)
+        # MMDのボーン名一覧を検索
+        for item in bone_data:
+            if item['MMD'] in armature.data.bones:
+                bone_mapping[item['RigPlus']] = item['MMD']
 
-        ik_tool_settings.bone_mapping = json.dumps(result_data)
+        # Vroidのボーン名一覧を検索
+        for item in bone_data:
+            if item['Vroid'] in armature.data.bones:
+                bone_mapping[item['RigPlus']] = item['Vroid']
+
+        # Valueが空白のKey名を取得
+        missing_targets = [key for key, value in bone_mapping.items() if not value]
+
+        # 結果をIKToolSettingsのプロパティとして保存
+        ik_tool_settings = context.scene.ik_tool_settings
+        ik_tool_settings.bone_mapping = json.dumps(bone_mapping)
         ik_tool_settings.missing_targets = json.dumps(missing_targets)
-        print(ik_tool_settings.bone_mapping )
+        # ボーンの名前リスト
+        bone_names = [
+            'J_Bip_C_Spine', '上半身0',  # Spine
+            'J_Bip_C_Chest', '上半身',    # Chest
+            'J_Bip_C_UpperChest', '上半身2',  # Upper Chest
+            'J_Bip_C_Neck', '首',         # Neck
+            'J_Bip_C_Head', '頭',         # Head
+            'J_Bip_C_Hips', '下半身'       # Hips
+        ]
+        bpy.ops.object.mode_set(mode='EDIT')
+        armature_obj = bpy.context.active_object.data
+        # 指定されたボーンに対してuse_connectをFalseに設定
+        for bone_name in bone_names:
+            if bone_name in armature_obj.edit_bones:
+                armature_obj.edit_bones[bone_name].use_connect = False
+        # オブジェクトモードに戻る
+        bpy.ops.object.mode_set(mode='OBJECT')
         return {'FINISHED'}
 
 #rigplus用のボーン名に変更する
@@ -62,6 +80,68 @@ def rename_bones_to_rigplus(armature, context):
 
     # オブジェクトモードに戻る
     bpy.ops.object.mode_set(mode='OBJECT')
+
+#VroidやMMDによってIK設定とPoleAngle
+def apply_ik_settings_and_pole_angle(name, limb_type):
+    # IK設定文字列を解析
+    ik_settings = json.loads(ik_setting_str)
+    print("apply_ik_settings_and_pole_angle: " + name)
+    # 指定された名前の設定を抽出
+    settings = next((item for item in ik_settings if item["name"] == name), None)
+    if settings is None:
+        print("指定された名前の設定が見つかりません。")
+        return
+    # アーマチュアにアクセスして設定を適用
+    armature_obj = bpy.data.objects.get("RigPlus")
+    if armature_obj is None or armature_obj.type != 'ARMATURE':
+        print("アーマチュアオブジェクトを選択してください。")
+        return
+    bpy.context.view_layer.objects.active = armature_obj
+    bpy.ops.object.mode_set(mode='POSE')
+
+    # 肢体のタイプに基づいてボーンを定義
+    bone_type = "arm" if limb_type == "Hand" else "leg"
+    bones = [f"L_lower_{bone_type}", f"R_lower_{bone_type}",f"R_lower_{bone_type}_dummy",f"L_lower_{bone_type}_dummy"]
+
+    for bone_name in bones:
+        bone = armature_obj.pose.bones.get(bone_name)
+        if bone is None:
+            print(f"アーマチュアに {bone_name} というボーンが見つかりません。")
+            continue
+        # ボーンのIK制約のポール角度と制限を更新
+        update_ik_settings_and_pole_angle(bone, settings, limb_type)
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def update_ik_settings_and_pole_angle(bone, settings, limb_type):
+    # ボーンのIK制約を見つける
+    ik_constraint = next((c for c in bone.constraints if c.type == 'IK'), None)
+    if ik_constraint is None:
+        print(f"{bone.name} にはIK制約が見つかりません。")
+        return
+    # ボーン名から左右を判断
+    side = "L" if "L_" in bone.name else "R"
+
+    # ポール角度の設定キーを生成
+    pole_angle_key = f"{side}_{limb_type}_Pole_angle"
+    print(bone.name+"/"+pole_angle_key+"/"+str(settings[pole_angle_key]))
+    ik_constraint.pole_angle = math.radians(float(settings[pole_angle_key]))
+    # IK制限を設定
+    # X軸の制限
+    limit_x_min_key = f"{side}_{limb_type}_Limt_x_min"
+    limit_x_max_key = f"{side}_{limb_type}_Limt_x_Max"
+    bone.use_ik_limit_x = True
+    bone.ik_min_x = math.radians(float(settings[limit_x_min_key]))
+    bone.ik_max_x = math.radians(float(settings[limit_x_max_key]))
+    # print(limit_x_min_key+"/"+str(settings[limit_x_min_key])+"/"+limit_x_max_key+"/"+str(settings[limit_x_max_key]))
+    # X軸と同様に 'use_ik_limit_y', 'ik_min_y', 'ik_max_y' を使用する
+    # Z軸の制限
+    limit_z_min_key = f"{side}_{limb_type}_Limt_z_min"
+    limit_z_max_key = f"{side}_{limb_type}_Limt_z_Max"
+    bone.use_ik_limit_z = True
+    bone.ik_min_z = math.radians(float(settings[limit_z_min_key]))
+    bone.ik_max_z = math.radians(float(settings[limit_z_max_key]))
+    # print(limit_z_min_key+"/"+str(settings[limit_z_min_key])+"/"+limit_z_max_key+"/"+str(settings[limit_z_max_key]))
 
 #メッセージポップアップを表示するためのクラス
 class MessagePopupOperator(bpy.types.Operator):
@@ -285,7 +365,131 @@ def set_translation(bone, loc):
     mat[1][3] = loc[1]
     mat[2][3] = loc[2]
     bone.matrix = mat
+class MakeRigOperator(bpy.types.Operator):
+    bl_idname = "object.make_rig"
+    bl_label = "Make Rig"
+    def is_name_in_bone_mapping(self, name):
+        ik_tool_settings = bpy.context.scene.ik_tool_settings  # IKToolSettingsのインスタンスを取得
+        bone_mapping_str = ik_tool_settings.bone_mapping
+        
+        # bone_mappingが初期値の場合はFalseを返す
+        if bone_mapping_str == "none":
+            return False
 
+        try:
+            bone_mapping = json.loads(bone_mapping_str)
+            # nameがキーまたは値に含まれているかチェック
+            return name in bone_mapping or name in bone_mapping.values()
+        except json.JSONDecodeError:
+            print("JSONの解析に失敗しました。")
+            return False
+    def execute(self, context):
+        # 選択中のオブジェクトを取得
+        selected_obj = context.active_object
+        
+        if selected_obj and selected_obj.type == 'ARMATURE':
+            # 選択中のアーマチュアをコピーしてrigという名前で新しいアーマチュアを作成
+            bpy.ops.object.duplicate()
+            bpy.context.active_object.name = "RigPlus"
+            rig = bpy.context.active_object
+            
+            # アーマチュアのボーンをポーズモードに切り替え
+            bpy.context.view_layer.objects.active = rig
+            bpy.ops.object.mode_set(mode='POSE')
+            
+            # originalのボーンとrigのボーンを対応付けてコンストレイントを追加
+            for bone in selected_obj.pose.bones:
+                flg = self.is_name_in_bone_mapping(bone.name)
+                if(not flg):
+                    continue
+                constraint = bone.constraints.new(type='COPY_TRANSFORMS')
+                constraint.target = rig  # rigアーマチュアをターゲットにする
+                constraint.subtarget = bone.name
+                # ターゲットのボーンも設定
+                constraint.target_space = 'POSE'
+                constraint.owner_space = 'POSE'
+                # コンストレイントの名前に[_rig]を追加
+                constraint.name = constraint.name + "_rig"
+            hide_constraints_of_armature(selected_obj.name,"_rig")
+            # ポーズモードからオブジェクトモードに切り替え
+            bpy.ops.object.mode_set(mode='OBJECT')
+            # ボーングループの作成
+            create_colored_bone_groups(rig)
+            bpy.ops.object.mode_set(mode='EDIT')
+
+            #Rigに使うボーン以外は削除
+            for bone in rig.data.edit_bones:
+                flg = self.is_name_in_bone_mapping(bone.name)
+                if(not flg):
+                    rig.data.edit_bones.remove(bone)
+            #VroidのBoneだったら
+            bpy.ops.object.mode_set(mode='EDIT')
+            flg1 = self.is_name_in_bone_mapping("J_Bip_C_Hips")
+            if(flg1):
+                vroid_bone = rig.data.edit_bones.new('VROID')
+                vroid_bone.head = (0, 0.1, 0)
+                vroid_bone.tail = (0, 0.2, 0)
+                move_bone_to_last_layer_and_hide(rig,"VROID")
+            #MMDのBoneだったら
+            flg2 = self.is_name_in_bone_mapping("下半身")
+            if(flg2):
+                mmd_bone = rig.data.edit_bones.new('MMD')
+                mmd_bone.head = (0, 0.1, 0)
+                mmd_bone.tail = (0, 0.2, 0)
+                move_bone_to_last_layer_and_hide(rig,"MMD")
+            rename_bones_to_rigplus(rig,context)
+            bpy.ops.object.mode_set(mode='EDIT')
+            new_bone = rig.data.edit_bones.new('RigPlus')      
+            # ボーンの位置を設定（例として、根元と先端の位置を設定）
+            new_bone.head = (0, 0, 0)
+            new_bone.tail = (0, 0.1, 0)
+            move_bone_to_last_layer_and_hide(rig,"RigPlus")
+
+
+            # "center" ボーンが存在するか確認
+            bpy.ops.object.mode_set(mode='EDIT')
+            edit_bones = rig.data.edit_bones
+            edit_bones1 = selected_obj.data.edit_bones
+            if "center" not in edit_bones:
+                # "center" ボーンを作成
+                center_bone = edit_bones.new("center")
+                center_bone.head = (0, 0, 0)
+                center_bone.tail = (0, 0, 0)  # 仮の高さ
+
+                # "hips" ボーンの高さを取得し、"center" の位置を設定
+                if "hips" in edit_bones:
+                    hips_height = edit_bones["hips"].head.z
+                    center_bone.head.z = hips_height
+                    center_bone.tail.z = hips_height
+                    center_bone.tail.y += 0.15
+
+                # "Root" ボーンを親に設定
+                if "Root" in edit_bones:
+                    center_bone.parent = edit_bones["Root"]
+
+            # "hips" の親を "center" に設定
+            if "hips" in edit_bones and "center" in edit_bones:
+                edit_bones["hips"].use_connect = False;
+                edit_bones["hips"].parent = edit_bones["center"]
+            if "hips" in edit_bones1:
+                edit_bones1["hips"].use_connect = False;
+            
+            # JSON文字列をPythonの辞書リストに変換
+            bone_data = json.loads(bone_data_str)
+            # RigPlusのボーン名を格納するリスト
+            rigplus_bone_names = [bone['RigPlus'] for bone in bone_data]
+            bpy.ops.object.mode_set(mode='POSE')
+            for bone in rigplus_bone_names:
+                custom_shape = create_custom_shape("circle", 0.5,"Y")
+                assign_bone_to_group(bone,BoneGroups.BODY_HANDLE)
+                rig.pose.bones[bone].custom_shape = custom_shape
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+            self.report({'INFO'}, "Rig created and constraints added.")
+        else:
+            self.report({'ERROR'}, "Please select an armature in Object Mode.")
+        
+        return {'FINISHED'}
 class CreateTorsoRig(bpy.types.Operator):
     bl_idname = "object.createtorso_rig"
     bl_label = "Set Torso Rig Custom Shapes"
@@ -357,6 +561,8 @@ class CreateTorsoRig(bpy.types.Operator):
         copy_rot_constraint.target_space = 'WORLD'
         copy_rot_constraint.owner_space = 'WORLD'
         copy_rot_constraint.influence = 1.0
+
+
         # ポーズモードからオブジェクトモードに切り替え
         bpy.ops.object.mode_set(mode='OBJECT')
         return {'FINISHED'}
@@ -478,7 +684,7 @@ class CreateWristIKOperator(Operator):
 
                 pbone0 = armature_obj.pose.bones["L_hand_IK"]
                 pbone0.custom_shape = custom_shape
-                print("test")
+                # print("test")
                 assign_bone_to_group("L_hand_IK",BoneGroups.IK_HANDLE)
                 pbone1 = armature_obj.pose.bones["R_hand_IK"]
                 pbone1.custom_shape = custom_shape
@@ -502,7 +708,6 @@ class CreateWristIKOperator(Operator):
                     bone.ik_max_x = math.radians(180)
                     bone.ik_min_z = math.radians(0)
                     bone.ik_max_z = math.radians(0)
-            
             bones_hands = ["L_hand", "R_hand",]
             for bone_name in bones_hands:
                 if(bone_name == "L_hand"):
@@ -516,6 +721,14 @@ class CreateWristIKOperator(Operator):
                 copy_transform_constraint.owner_space = 'LOCAL_WITH_PARENT'
                 copy_transform_constraint.target_space = 'LOCAL_OWNER_ORIENT'
                 copy_transform_constraint.influence = 0
+                #腕IKのチャイルドコンストレイントを付ける
+                hand_IK_bone = armature_obj.pose.bones.get(copy_bone)
+                # チャイルドコンストレイントを追加
+                child_constraint = hand_IK_bone.constraints.new('CHILD_OF')
+                child_constraint.target = armature_obj
+                child_constraint.subtarget = "upper_chest"
+                child_constraint.influence = 0
+
             hide_dummy_bones(armature_obj)
             hand_sets = ["R_hand","L_hand"]
             for hand in hand_sets:
@@ -523,64 +736,45 @@ class CreateWristIKOperator(Operator):
                 custom = create_custom_shape("circle",3,"Y")
                 pbonehand = armature_obj.pose.bones[hand]
                 pbonehand.custom_shape = custom
-                
+            if "VROID" in armature_obj.data.bones:
+                apply_ik_settings_and_pole_angle("VROID", "Hand")
+            elif "MMD" in armature_obj.data.bones:
+                apply_ik_settings_and_pole_angle("MMD", "Hand")
+            # 必要なオブジェクトを取得
+            armature_obj = bpy.data.objects.get("RigPlus")
+            # アーマチュアが存在し、正しいタイプであることを確認
+            if armature_obj and armature_obj.type == 'ARMATURE':
+                # アーマチュアをアクティブオブジェクトとして設定
+                bpy.context.view_layer.objects.active = armature_obj
+                # アーマチュアを選択状態にする
+                armature_obj.select_set(True)
+                # オブジェクトモードに切り替える
+                bpy.ops.object.mode_set(mode='EDIT')
+            #IKが動くようにするために若干Y方向へボーンを動かす
+            bpy.ops.object.mode_set(mode='EDIT')
+            # アーマチュアの編集ボーンを取得
+            edit_bones = armature_obj.data.edit_bones
+            bones_move = ["L_lower_arm","L_lower_arm_dummy", "R_lower_arm","R_lower_arm_dummy", "L_upper_arm","L_upper_arm_dummy", "R_upper_arm","R_upper_arm_dummy"]
+            for bone_name in bones_move:
+                bone = edit_bones.get(bone_name)
+                if bone:
+                    # ボーン名に 'lower' が含まれる場合、head を動かす
+                    if 'lower' in bone_name:
+                        bone.head[1] += 0.005  # headをY軸方向に0.005移動
+                    # ボーン名に 'upper' が含まれる場合、tail を動かす
+                    elif 'upper' in bone_name:
+                        bone.tail[1] += 0.005  # tailをY軸方向に0.005移動
+                else:
+                    print(f"{bone_name} という名前のボーンが見つかりません。")
+            
+            # 編集モードを終了
+            bpy.ops.object.mode_set(mode='OBJECT')
             return {'FINISHED'}
         else:
             self.report({'ERROR'}, "アクティブなオブジェクトがアーマチュアではありません")
             return {'CANCELLED'}
         
-class MakeRigOperator(bpy.types.Operator):
-    bl_idname = "object.make_rig"
-    bl_label = "Make Rig"
-    
-    def execute(self, context):
-        # 選択中のオブジェクトを取得
-        selected_obj = context.active_object
-        
-        if selected_obj and selected_obj.type == 'ARMATURE':
-            # 選択中のアーマチュアをコピーしてrigという名前で新しいアーマチュアを作成
-            bpy.ops.object.duplicate()
-            bpy.context.active_object.name = "RigPlus"
-            rig = bpy.context.active_object
-            
-            # アーマチュアのボーンをポーズモードに切り替え
-            bpy.context.view_layer.objects.active = rig
-            bpy.ops.object.mode_set(mode='POSE')
-            
-            # originalのボーンとrigのボーンを対応付けてコンストレイントを追加
-            for bone in selected_obj.pose.bones:
-                constraint = bone.constraints.new(type='COPY_TRANSFORMS')
-                constraint.target = rig  # rigアーマチュアをターゲットにする
-                constraint.subtarget = bone.name
-                # ターゲットのボーンも設定
-                constraint.target_space = 'POSE'
-                constraint.owner_space = 'POSE'
-                # コンストレイントの名前に[_rig]を追加
-                constraint.name = constraint.name + "_rig"
-            hide_constraints_of_armature(selected_obj.name,"_rig")
-            # ポーズモードからオブジェクトモードに切り替え
-            bpy.ops.object.mode_set(mode='OBJECT')
-            # ボーングループの作成
-            create_colored_bone_groups(rig)
-            #暫定でもとのアーマチュアの髪のコンストレイントを削除/RigPlusのHairボーンを削除
-            modify_bones_with_string(selected_obj.name,"Hair")
-            modify_bones_with_string(rig.name,"Hair")
 
-            # 編集モードに切り替え（すでに編集モードの場合は不要）
-            bpy.ops.object.mode_set(mode='EDIT')
-            new_bone = rig.data.edit_bones.new('RigPlus')
-            # ボーンの位置を設定（例として、根元と先端の位置を設定）
-            new_bone.head = (0, 0, 0)
-            new_bone.tail = (0, 0.1, 0)
-            move_bone_to_last_layer_and_hide(rig,"RigPlus")
-            rename_bones_to_rigplus(rig,context)
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-            self.report({'INFO'}, "Rig created and constraints added.")
-        else:
-            self.report({'ERROR'}, "Please select an armature in Object Mode.")
-        
-        return {'FINISHED'}
     
 
 class CreateLegIKOperator(bpy.types.Operator):
@@ -674,7 +868,7 @@ class CreateLegIKOperator(bpy.types.Operator):
 
             # Switch to pose mode and add constraints
             bpy.ops.object.mode_set(mode='POSE')
-            custom_shape = create_custom_shape("cube",0.5)
+            custom_shape = create_custom_shape("cube",1.0)
             custom_shapePole = create_custom_shape("cube",0.5)
 
             for bone_names in leg_bones_sets:
@@ -740,6 +934,8 @@ class CreateLegIKOperator(bpy.types.Operator):
                 copy_transform_constraint.target_space = 'LOCAL_OWNER_ORIENT'
                 copy_transform_constraint.influence = 0    
             hide_dummy_bones(armature_obj) 
+            if "VROID" in armature_obj.data.bones:
+                apply_ik_settings_and_pole_angle("VROID", "Foot")
             bpy.ops.object.mode_set(mode='OBJECT')
             return {'FINISHED'}
         else:
@@ -1261,6 +1457,11 @@ def update_r_foot_bones_influence(self, context):
     update_foot_bones_influence(self, context, 'R')       
 # パネル設定用
 class IKToolSettings(bpy.types.PropertyGroup):
+    ik_setting: bpy.props.StringProperty(
+        name="ik_setting List JSON",
+        default="",
+        description="JSON representation of the multi list"
+    )
     show_arm_ik: bpy.props.BoolProperty(
         name="OnHandIKSetting",
         description="Toggle visibility of HandIKSetting section",
@@ -1392,8 +1593,29 @@ def draw_bone_constraints(context, layout):
                     if constraint.type == 'COPY_TRANSFORMS':
                         row = layout.row()
                         row.prop(constraint, "influence", slider=True,text=displayName)
+#IKのチャイルドコンストレイントのパネル設定
+def draw_IK_bone_constraints(context, layout):
+    armature_obj = context.active_object
+    if armature_obj and armature_obj.type == 'ARMATURE':
+        ik_bone_names = ["R_hand_IK", "L_hand_IK"]
+        layout.label(text="hand_IK Parent:", icon='CONSTRAINT_BONE')
 
-               
+        # 'R_hand_IK' と 'L_hand_IK' のコンストレイント設定
+        for ik_bone_name in ik_bone_names:
+            bone = armature_obj.pose.bones.get(ik_bone_name)
+            if bone:
+                child_of_constraint = next((c for c in bone.constraints if c.type == 'CHILD_OF'), None)
+                if child_of_constraint:
+                    # ターゲットボーン選択メニュー
+                    
+                    row = layout.row()
+                    row.label(text=f"{ik_bone_name} Parent Bone:")
+                    row.prop_search(child_of_constraint, "subtarget", armature_obj.pose, "bones", text="")
+
+                    # インフルエンススライダー
+                    row = layout.row()
+                    row.prop(child_of_constraint, "influence", slider=True)
+
 #パネル設定用
 class IKToolPanel(bpy.types.Panel):
     bl_label = "DistroRigPlus"
@@ -1433,6 +1655,7 @@ class IKToolPanel(bpy.types.Panel):
         flg3 = bone_exist("L_hand_pole")
         flg4 = bone_exist("L_foot_pole")
         flg5 = bone_exist("L_foot_IK_P")
+        flg6 = bone_exist("VROID")
 
 
         if(not flg1):
@@ -1446,8 +1669,9 @@ class IKToolPanel(bpy.types.Panel):
             box.operator("object.create_wrist_ik",text="Arm IK Creation")
         if(not flg4):
             box.operator("object.create_leg_ik", text="Foot IK Creation")
-        if(not flg5):
-            box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")      
+        if(not flg6):
+            if(not flg5):
+                box.operator("object.create_toe_heel_rig", text="Toes & Heels Rig")      
         if(flg2):
             layout.prop(settings,"show_Troso_rig")
             if settings.show_Troso_rig:
@@ -1462,12 +1686,13 @@ class IKToolPanel(bpy.types.Panel):
                 box.label(text="腕IK作成:", icon='CONSTRAINT_BONE')
                 # box.operator("object.create_wrist_ik", text="腕IK作成")
                 draw_bone_constraints(context, box)
-                box.label(text="Right Arm:", icon='CONSTRAINT_BONE')
+                box.label(text="Right Arm IK2FK/FK2IK:", icon='CONSTRAINT_BONE')
                 box.operator("pose.ik_to_fk_right", text="IK to FK βver")
                 box.operator("pose.copy_ik_to_fk_right", text="FK to IK")
-                box.label(text="Left Arm:", icon='CONSTRAINT_BONE')
+                box.label(text="Left Arm IK2FK/FK2IK:", icon='CONSTRAINT_BONE')
                 box.operator("pose.ik_to_fk_left", text="IK to FK βver")
                 box.operator("pose.copy_ik_to_fk_left", text="FK to IK")
+                draw_IK_bone_constraints(context, box)
         if(flg4):
             # 足IKの表示設定
             layout.prop(settings, "show_leg_ik")
@@ -1819,4 +2044,55 @@ bone_data_str = """
     "Vroid": "J_Bip_R_ToeBase"
   }
 ]
+"""
+ik_setting_str = """
+[
+  {
+    "name": "VROID",
+    "L_Hand_Pole_angle": 180,
+    "L_Hand_Limt_x_min": 0,
+    "L_Hand_Limt_x_Max": 0,
+    "L_Hand_Limt_z_min": -180,
+    "L_Hand_Limt_z_Max": 0,
+    "R_Hand_Pole_angle": 0,
+    "R_Hand_Limt_x_min": 0,
+    "R_Hand_Limt_x_Max": 0,
+    "R_Hand_Limt_z_min": 0,
+    "R_Hand_Limt_z_Max": 180,
+    "L_Foot_Pole_angle": -90,
+    "L_Foot_Limt_x_min": 0,
+    "L_Foot_Limt_x_Max": 180,
+    "L_Foot_Limt_z_min": 0,
+    "L_Foot_Limt_z_Max": 0,
+    "R_Foot_Pole_angle": -90,
+    "R_Foot_Limt_x_min": 0,
+    "R_Foot_Limt_x_Max": 180,
+    "R_Foot_Limt_z_min": 0,
+    "R_Foot_Limt_z_Max": 0
+  },
+    {
+    "name": "MMD",
+    "L_Hand_Pole_angle": 45,
+    "L_Hand_Limt_x_min": 0,
+    "L_Hand_Limt_x_Max": 0,
+    "L_Hand_Limt_z_min": 0,
+    "L_Hand_Limt_z_Max": 180,
+    "R_Hand_Pole_angle": -45,
+    "R_Hand_Limt_x_min": 0,
+    "R_Hand_Limt_x_Max": 0,
+    "R_Hand_Limt_z_min": 0,
+    "R_Hand_Limt_z_Max": 180,
+    "L_Foot_Pole_angle": -90,
+    "L_Foot_Limt_x_min": 0,
+    "L_Foot_Limt_x_Max": 180,
+    "L_Foot_Limt_z_min": 0,
+    "L_Foot_Limt_z_Max": 0,
+    "R_Foot_Pole_angle": -90,
+    "R_Foot_Limt_x_min": 0,
+    "R_Foot_Limt_x_Max": 180,
+    "R_Foot_Limt_z_min": 0,
+    "R_Foot_Limt_z_Max": 0
+  }
+]
+
 """
