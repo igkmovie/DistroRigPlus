@@ -1,5 +1,7 @@
 bl_info = {
     "name": "DistroRigPlus",
+     "author": "ig_k",
+    "version": (0, 0, 1),  # バージョン番号
     "blender": (2, 80, 0),
     "category": "Object",
 }
@@ -159,7 +161,7 @@ class MessagePopupOperator(bpy.types.Operator):
         return {'FINISHED'}
 #メッセージポップアップのラッパー
 def show_popup(message):
-    bpy.ops.wm.message_popup_operator(message=message)
+    bpy.ops.wm.message_popup_operator(message)
 
 #選択中にアーマチュア内にボーンがあるかないか？を判断するメソッド
 def bone_exist(bone_name):
@@ -245,11 +247,17 @@ def create_colored_bone_groups(active_obj):
         'center_handle': (0.5, 0.0, 0.5),  # 紫色
         'controller_handle': (0.0, 1.0, 0.0)  # 緑色
     }
+    blender_version = bpy.app.version
     for name, color in bone_group_data.items():
-        if name not in active_obj.pose.bone_groups:
-            bg = active_obj.pose.bone_groups.new(name=name)
-            bg.color_set = 'CUSTOM'
-            bg.colors.normal = color
+        if blender_version < (3, 80, 0):
+            if name not in active_obj.pose.bone_groups:
+                bg = active_obj.pose.bone_groups.new(name=name)
+                bg.color_set = 'CUSTOM'
+                bg.colors.normal = color
+        else:
+            if name not in active_obj.data.collections:
+                bg = active_obj.data.collections.new(name=name)
+                bg.color = color            
     bpy.ops.object.mode_set(mode='OBJECT')
             
 def assign_bone_to_group(bone_name, bone_group_enum):
@@ -1226,8 +1234,13 @@ class OBJECT_OT_CreateToeHeelRig(bpy.types.Operator):
             # Check for the main IK bone or use the foot bone
             # ref_bone = edit_bones.get(foot_ik_name) or edit_bones.get(f"{side}_foot")
             ref_bone = edit_bones.get(foot_ik_name)
+            ref_bone2 = edit_bones.get("L_hand_IK")
             if not ref_bone:
-                self.report({'ERROR'}, f"Reference bone '{foot_ik_name}' or '{side}_foot' not found.")
+                show_popup("Please create the foot IK before proceeding with the creation/足IKを作成してから作成して下さい")
+                return {'CANCELLED'}
+                # self.report({'ERROR'}, f"Reference bone '{foot_ik_name}' or '{side}_foot' not found.")
+            if not ref_bone2:
+                show_popup("Please create the hand IK before proceeding with the creation/腕IKを作成してから作成して下さい")
                 return {'CANCELLED'}
 
 
@@ -1288,11 +1301,14 @@ class OBJECT_OT_CreateToeHeelRig(bpy.types.Operator):
             # Create toeBaseRot for L and R toeBase
             toeBase_bone = edit_bones.get(toe_base_name)
             toeBaseRot_bone = edit_bones.new(toeBaseRot)
-            toeBaseRot_bone.head = toeBase_bone.head
+            toeBaseRot_bone.use_connect = False
+            toeBaseRot_bone.head= toeBase_bone.head
             toeBaseRot_bone.tail = toeBase_bone.tail
             foot_bone = edit_bones.get(foot_name)
-            toeBaseRot_bone.use_connect = False
             toeBaseRot_bone.parent = foot_bone
+            # root_bone = edit_bones.get("Root")
+            # toeBase_bone.parent = root_bone
+            toeBase_bone.use_connect = False
             toeBase_bone.parent = toeBaseRot_bone
 
         for side in ['L', 'R']:
@@ -1655,8 +1671,8 @@ class IKToolPanel(bpy.types.Panel):
         flg3 = bone_exist("L_hand_pole")
         flg4 = bone_exist("L_foot_pole")
         flg5 = bone_exist("L_foot_IK_P")
-        flg6 = bone_exist("VROID")
-
+        flg6 = bone_exist("MMD")
+        # flg6 = False
 
         if(not flg1):
             return
