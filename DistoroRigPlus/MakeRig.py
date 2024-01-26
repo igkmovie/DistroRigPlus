@@ -29,9 +29,9 @@ def hide_constraints_of_armature(armature_name="RigPlus", exclude_string="_rig")
     bpy.ops.object.mode_set(mode='OBJECT')
 #rigplus用のボーン名に変更する
 def rename_bones_to_rigplus(armature, context):
-    # IKToolSettingsからbone_mappingを取得
-    ik_tool_settings = context.scene.ik_tool_settings  # 仮定されたプロパティ名
-    bone_mapping = json.loads(ik_tool_settings.bone_mapping)
+    # RigPlusSettingsからbone_mappingを取得
+    rigplus_settings = context.scene.rigplus_settings  # 仮定されたプロパティ名
+    bone_mapping = json.loads(rigplus_settings.bone_mapping)
     # エディットモードに移行
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode='EDIT')
@@ -48,13 +48,12 @@ class MakeRigOperator(bpy.types.Operator):
     bl_idname = "object.make_rig"
     bl_label = "Make Rig"
     def is_name_in_bone_mapping(self, name):
-        ik_tool_settings = bpy.context.scene.ik_tool_settings  # IKToolSettingsのインスタンスを取得
-        bone_mapping_str = ik_tool_settings.bone_mapping
+        rigplus_settings = bpy.context.scene.rigplus_settings  # RigPlusSettingsのインスタンスを取得
+        bone_mapping_str = rigplus_settings.bone_mapping
         
         # bone_mappingが初期値の場合はFalseを返す
         if bone_mapping_str == "none":
             return False
-
         try:
             bone_mapping = json.loads(bone_mapping_str)
             # nameがキーまたは値に含まれているかチェック
@@ -103,19 +102,21 @@ class MakeRigOperator(bpy.types.Operator):
                     rig.data.edit_bones.remove(bone)
             #VroidのBoneだったら
             bpy.ops.object.mode_set(mode='EDIT')
-            flg1 = self.is_name_in_bone_mapping("J_Bip_C_Hips")
-            if(flg1):
-                vroid_bone = rig.data.edit_bones.new('VROID')
-                vroid_bone.head = (0, 0.1, 0)
-                vroid_bone.tail = (0, 0.2, 0)
-                RigPlus_Defs.move_bone_to_last_layer_and_hide(rig,"VROID")
-            #MMDのBoneだったら
-            flg2 = self.is_name_in_bone_mapping("下半身")
-            if(flg2):
-                mmd_bone = rig.data.edit_bones.new('MMD')
-                mmd_bone.head = (0, 0.1, 0)
-                mmd_bone.tail = (0, 0.2, 0)
-                RigPlus_Defs.move_bone_to_last_layer_and_hide(rig,"MMD")
+            # flg1 = self.is_name_in_bone_mapping("J_Bip_C_Hips")
+            settings = context.scene.rigplus_settings
+            # flg1 = True
+            # if(flg1):
+            #     vroid_bone = rig.data.edit_bones.new('VROID')
+            #     vroid_bone.head = (0, 0.1, 0)
+            #     vroid_bone.tail = (0, 0.2, 0)
+            #     RigPlus_Defs.move_bone_to_last_layer_and_hide(rig,"VROID")
+            # #MMDのBoneだったら
+            # flg2 = self.is_name_in_bone_mapping("下半身")
+            # if(flg2):
+            #     mmd_bone = rig.data.edit_bones.new('MMD')
+            #     mmd_bone.head = (0, 0.1, 0)
+            #     mmd_bone.tail = (0, 0.2, 0)
+            #     RigPlus_Defs.move_bone_to_last_layer_and_hide(rig,"MMD")
             rename_bones_to_rigplus(rig,context)
             bpy.ops.object.mode_set(mode='EDIT')
             new_bone = rig.data.edit_bones.new('RigPlus')      
@@ -158,10 +159,14 @@ class MakeRigOperator(bpy.types.Operator):
             # RigPlusのボーン名を格納するリスト
             rigplus_bone_names = [bone['RigPlus'] for bone in bone_data]
             bpy.ops.object.mode_set(mode='POSE')
-            for bone in rigplus_bone_names:
-                custom_shape = RigPlus_Defs.create_custom_shape("circle", 0.5,"Y")
-                RigPlus_Defs.assign_bone_to_group(bone,Property_Panel.BoneGroups.BODY_HANDLE)
-                rig.pose.bones[bone].custom_shape = custom_shape
+
+            for bone_name in rigplus_bone_names:
+                # ボーンが存在するかどうかをチェック
+                if bone_name in rig.pose.bones:
+                    # ボーンが存在する場合はカスタムシェイプを設定
+                    custom_shape = RigPlus_Defs.create_custom_shape("circle", 0.5, "Y")
+                    RigPlus_Defs.assign_bone_to_group(bone_name, Property_Panel.BoneGroups.BODY_HANDLE)
+                    rig.pose.bones[bone_name].custom_shape = custom_shape
             bpy.ops.object.mode_set(mode='OBJECT')
 
             self.report({'INFO'}, "Rig created and constraints added.")

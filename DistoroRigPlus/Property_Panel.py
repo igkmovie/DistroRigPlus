@@ -28,7 +28,7 @@ def update_l_foot_bones_influence(self, context):
 def update_r_foot_bones_influence(self, context):
     update_foot_bones_influence(self, context, 'R')       
 # パネル設定用
-class IKToolSettings(bpy.types.PropertyGroup):
+class RigPlusSettings(bpy.types.PropertyGroup):
     ik_setting: bpy.props.StringProperty(
         name="ik_setting List JSON",
         default="",
@@ -78,7 +78,6 @@ class IKToolSettings(bpy.types.PropertyGroup):
         default="",
         description="JSON representation of the multi list"
     )
-
 
 #パネル設定用
 def draw_head_constraint(context, layout):
@@ -194,9 +193,18 @@ class BoneGroups(Enum):
     BODY_HANDLE = "body_handle"
     CENTER_HANDLE = "center_handle"
     CONTROLLER_HANDLE = "controller_handle"
+def update_prop(self, context):
+    selected = context.scene.my_tool
 
+    # 他のプロパティをFalseに設定する条件を変更
+    if self.prop_a and (self.prop_b or self.prop_c):
+        selected.prop_b = selected.prop_c = False
+    elif self.prop_b and (self.prop_a or self.prop_c):
+        selected.prop_a = selected.prop_c = False
+    elif self.prop_c and (self.prop_a or self.prop_b):
+        selected.prop_a = selected.prop_b = False
 # パネル設定用
-class IKToolSettings(bpy.types.PropertyGroup):
+class RigPlusSettings(bpy.types.PropertyGroup):
     ik_setting: bpy.props.StringProperty(
         name="ik_setting List JSON",
         default="",
@@ -247,6 +255,10 @@ class IKToolSettings(bpy.types.PropertyGroup):
         default="",
         description="JSON representation of the multi list"
     )
+    prop_vrm0: bpy.props.BoolProperty(name="VRM0.x",default=True, update=update_prop)
+    prop_vrm1: bpy.props.BoolProperty(name="VRM1.x", update=update_prop)
+    prop_pmx: bpy.props.BoolProperty(name="pmx", update=update_prop)
+
 #パネル設定用
 class IKToolPanel(bpy.types.Panel):
     bl_label = "DistroRigPlus"
@@ -266,9 +278,10 @@ class IKToolPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        settings = context.scene.ik_tool_settings
+        settings = context.scene.rigplus_settings
         flg = True;
-
+        typebox = layout.box()
+        typebox.prop(settings, "prop_vrm0")
         # Rigを作成のみのボックス
         box0 = layout.box()
         box0.label(text="Rig Tools:", icon='ARMATURE_DATA')

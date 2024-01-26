@@ -1,7 +1,7 @@
 bl_info = {
     "name": "DistroRigPlus",
      "author": "ig_k",
-    "version": (0, 0, 2),  # バージョン番号
+    "version": (0, 0, 3),  # バージョン番号
     "blender": (2, 80, 0),
     "category": "Object",
 }
@@ -32,8 +32,9 @@ from enum import Enum
 
 
 
-def register():    
+def register():
     bpy.utils.register_class(RigSetUp.MapBonesToRigPlus)
+    bpy.utils.register_class(RigSetUp.MapBonesToRigPlusTest)
     bpy.utils.register_class(RigPlus_Defs.MessagePopupOperator)
     bpy.utils.register_class(FootIKCreation.CreateLegIKOperator)
     bpy.utils.register_class(ArmIKCreation.CreateWristIKOperator)
@@ -48,12 +49,13 @@ def register():
     bpy.utils.register_class(IK2FK_FK2IK.IK2FKLeftLegOperator)
     bpy.utils.register_class(IK2FK_FK2IK.IK2FKRightLegOperator)
     bpy.utils.register_class(ToesHeelsRig.OBJECT_OT_CreateToeHeelRig)
-    bpy.utils.register_class(Property_Panel.IKToolSettings)
+    bpy.utils.register_class(Property_Panel.RigPlusSettings)
     bpy.utils.register_class(Property_Panel.IKToolPanel)
-    bpy.types.Scene.ik_tool_settings = bpy.props.PointerProperty(type=Property_Panel.IKToolSettings)
+    bpy.types.Scene.rigplus_settings = bpy.props.PointerProperty(type=Property_Panel.RigPlusSettings)
 
 def unregister():
     bpy.utils.unregister_class(RigSetUp.MapBonesToRigPlus)
+    bpy.utils.unregister_class(RigSetUp.MapBonesToRigPlusTest)
     bpy.utils.unregister_class(RigPlus_Defs.MessagePopupOperator)
     bpy.utils.unregister_class(FootIKCreation.CreateLegIKOperator)
     bpy.utils.unregister_class(MakeRig.MakeRigOperator)
@@ -68,9 +70,9 @@ def unregister():
     bpy.utils.unregister_class(IK2FK_FK2IK.IK2FKLeftLegOperator)
     bpy.utils.unregister_class(IK2FK_FK2IK.IK2FKRightLegOperator)
     bpy.utils.unregister_class(ToesHeelsRig.OBJECT_OT_CreateToeHeelRig)
-    del bpy.types.Scene.ik_tool_settings
+    del bpy.types.Scene.rigplus_settings
     bpy.utils.unregister_class(Property_Panel.IKToolPanel)
-    bpy.utils.unregister_class(Property_Panel.IKToolSettings)
+    bpy.utils.unregister_class(Property_Panel.RigPlusSettings)
 
 if __name__ == "__main__":
     register()

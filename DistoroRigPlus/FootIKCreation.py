@@ -162,7 +162,8 @@ class CreateLegIKOperator(bpy.types.Operator):
                 copy_transform_constraint.target_space = 'LOCAL_OWNER_ORIENT'
                 copy_transform_constraint.influence = 0    
             RigPlus_Defs.hide_dummy_bones(armature_obj) 
-            if "VROID" in armature_obj.data.bones:
+            settings = context.scene.rigplus_settings
+            if (settings.prop_vrm0 == True):
                 RigPlus_Defs.apply_ik_settings_and_pole_angle("VROID", "Foot")
             bpy.ops.object.mode_set(mode='OBJECT')
             return {'FINISHED'}

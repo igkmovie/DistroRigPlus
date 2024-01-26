@@ -168,9 +168,10 @@ class CreateWristIKOperator(Operator):
                 custom = RigPlus_Defs.create_custom_shape("circle",3,"Y")
                 pbonehand = armature_obj.pose.bones[hand]
                 pbonehand.custom_shape = custom
-            if "VROID" in armature_obj.data.bones:
+            settings = context.scene.rigplus_settings
+            if (settings.prop_vrm0 == True):
                 RigPlus_Defs.apply_ik_settings_and_pole_angle("VROID", "Hand")
-            elif "MMD" in armature_obj.data.bones:
+            elif(settings.prop_pmx == True):
                 RigPlus_Defs.apply_ik_settings_and_pole_angle("MMD", "Hand")
             # 必要なオブジェクトを取得
             armature_obj = bpy.data.objects.get("RigPlus")
